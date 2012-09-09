@@ -1,0 +1,284 @@
+Duplicate command: ubn
+.about 
+: Give information about a named bot command
+
+.about about
+: Give information about a named bot command
+
+.about ask
+: Ask another user an enquiry
+
+.about test-undocumented
+: That command has no documentation
+
+.about test-undefined
+: Couldn't find that command
+
+.admin
+TIMEOUT
+
+.ask
+: Ask another user an enquiry
+
+.ask $(BOT) something
+: Understood
+
+.ask $(USER) something
+: You can tell yourself that
+
+.attributes
+irc: <[a-z, ]+>
+input: <[a-z, ]+>
+
+.beats
+: @<[0-9]{3}>
+
+.bing reddit
+: http://www.reddit.com/
+
+.bing $(USER)vzmvnncvz
+: No results found
+
+.botsnack
+:)
+
+.botsnack something
+:)
+
+.bytes ûôß
+: b'\xc3\xbb\xc3\xb4\xc3\x9f'
+
+.c e ** (i * 2/3pi)
+0.977568548 + 0.210617505 i
+
+.date
+<[0-9]{4}-[0-9]{2}-[0-9]{2}>
+
+.decode &eacute;
+é
+
+.duck reddit
+: http://www.reddit.com/
+
+.duck $(USER)vzmvnncvz
+: No result found for '<[a-z]+>'
+
+.encoding http://inamidst.com/
+: utf-8 (Content-Type)
+
+.error-test
+Python Error. <[^:]+>: standard.py:<[0-9]+> error_test(...) 1/0
+
+.ety frog
+"<.{32,}>" - http://etymonline.com/index.php?term=frog
+
+.follow http://tinyurl.com/inamidst
+: http://inamidst.com/
+
+.g reddit
+: http://www.reddit.com/
+
+.gc gomboc
+<[0-9,]+> (api), <[0-9,]+> (vend), <[0-9,]+> (end), <[0-9,]+> (site) - gomboc
+
+.gcs [a b c] "d e f" g h i
+[api] <.> (<[0-9,]+>), <.> (<[0-9,]+>), <.> (<[0-9,]+>), a b c (<[0-9,]+>), "d e f" (<[0-9,]+>)
+
+.gd define
+: de<·?>fine / verb (diˈfīn) / <.*>
+
+.head http://inamidst.com/
+: 200, text/html, utf-8, <[0-9]+> bytes
+
+.help
+I am duxlot. You are not. WRITTEN IN PYTHON3™
+
+.img rongorongo
+: http://<.*>
+More: http://google.com/images?q=rongorongo
+
+.in 5s ê!
+: Will remind in 5 secs
+: ê!
+
+.ip-time bbc.co.uk
+: <[0-9]+ [A-Za-z]{3} [0-9]{4}, [0-9:]{8} (UTC|BST)>
+
+.len mâché
+: 5 chars, 7 bytes (utf-8)
+
+.leo Möwe
+: <.*> Möwe <.*> seagull <.*> — http://dict.leo.org/ende?search=M%C3%B6we
+
+.leo Mücken
+: Nothing found at http://dict.leo.org/ende?search=M%C3%BCcken
+
+.mangle peter piper picked a peck of pickled peppers
+: <.*> a <.*>
+
+.maximum
+The maximum length text I can send here is <[0-9]{3}> bytes
+
+.metar EGLL
+: <.*, [0-9]+℃, [0-9]+mb, .* - EGLL [0-9:]{5}>
+
+.news Apple site:reuters.com
+: http://<.*>reuters.com/<.*>
+More: http://google.com/news?q=Apple%20site%3Areuters.com
+
+.npl
+<[0-9 :.-]{26}> - ntp1.npl.co.uk
+
+.parse-irc-message :localhost PING :client
+: {<.*>'parameters_octets': [b'client']<.*>}
+
+.parsed-message
+: {<.*> 'command': 'PRIVMSG'<.*>}
+
+.prefix
+: Current prefix for here is "<[^"]+>"
+
+.py len("mâché!")
+8
+
+.reload
+: That's an admin-only feature
+
+.search-trio reddit
+: [GBD] http://www.reddit.com/
+
+.seen $(BOT)
+: I'm right here
+
+.snippets phenny
+: <.*>IRC<.*>
+
+.stats
+: Top used commands: <[a-z()0-9, -]{16,}>
+
+.suggest up Pompeii
+Perhaps up Pompeii: <.{16,}>
+
+.t
+<[0-9]{1,2} [A-Za-z]{3} [0-9]{4}, [0-9:]{8}> UTC
+
+.tell
+: Tell another user a message
+
+.tell $(BOT) something
+: Understood
+
+.tell $(USER) something
+: You can tell yourself that
+
+.time
+<[0-9]{2}:[0-9]{2}:[0-9]{2}>
+
+.time-taken
+Smallest: <[0-9]+\.[0-9]+>
+Biggest: <[0-9]+\.[0-9]+>
+
+.timer
+: Time how long it takes to run another unparametric command
+
+.timer time
+<[0-9]{2}:[0-9]{2}:[0-9]{2}>
+: Took <[0-9]+\.[0-9]{3}> seconds
+
+.timer time a b c
+: Command must not be parametric
+
+.timer timer
+: That would take too long
+
+.timer undefined
+: No such command: "undefined"
+
+.timezone GMT
+: Set your TZ to GMT; currently GMT (UTC +0)
+
+.t
+<[0-9]{1,2} [A-Za-z]{3} [0-9]{4}, [0-9:]{8}> GMT
+
+.timezone -
+: Your timezone has been un-set
+
+.t
+<[0-9]{1,2} [A-Za-z]{3} [0-9]{4}, [0-9:]{8}> UTC
+
+.title inamidst.com
+: inamidst.com, by Sean B. Palmer
+
+.title http://inamidst.com/
+: inamidst.com, by Sean B. Palmer
+
+.to
+: Send a message to another user
+
+.to $(BOT) something
+: Understood
+
+.to $(USER) something
+: You can tell yourself that
+
+.tock
+"<[A-Za-z0-9,: ]{25}> GMT" - tycho.usno.navy.mil
+
+.tr mon chat
+: my cat (fr » en). translate.google.com
+
+.tw 241314011524788225
+Juhu, mache nächste Woche also was mit maxi :3 (@Einhornkotze2)
+
+.tw https://twitter.com/Einhornkotze2/status/241314011524788225
+Juhu, mache nächste Woche also was mit maxi :3 (@Einhornkotze2)
+
+.tz 18:00 BST in PDT
+18:00 British Summer Time = 10:00 Pacific Daylight Time
+
+.tz 18:53 UTC in CEST
+18:53 Coordinated Universal Time = 20:53 Central European Summer Time
+
+.u e circum
+U+00CA LATIN CAPITAL LETTER E WITH CIRCUMFLEX (Ê) [L]
+U+00EA LATIN SMALL LETTER E WITH CIRCUMFLEX (ê) [L]
+
+.u ê
+U+00EA LATIN SMALL LETTER E WITH CIRCUMFLEX (ê) [L]
+
+.ubc cir
+U+0063 LATIN SMALL LETTER C (c) [L], U+0069 LATIN SMALL LETTER I (i) [L], U+0072 LATIN SMALL LETTER R (r) [L]
+
+.ubcp A7
+U+00A7 SECTION SIGN (§) [P]
+
+.ubcp A70
+U+0A70 GURMUKHI TIPPI (◌ੰ) [C]
+
+.ubcp A700
+U+A700 MODIFIER LETTER CHINESE TONE YIN PING (꜀) [S]
+
+.ubcp A7000
+: No unicode character found
+
+.unix-date
+<[A-Za-z0-9: ]{19} [A-Z]{3,4} [0-9]{4}>
+
+.unixtime
+<[0-9]{10,}\.[0-9]+>
+
+.utc
+<[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}>
+
+.w frog
+frog — noun: 1. <.*>amphibian<.*>
+
+.wa first day of 2012
+start of->2012; Sunday, January 1, 2012; <.*>
+
+.wik Rime of the Ancient Mariner
+"The Rime of the Ancient Mariner <.*> Coleridge<.*>" - https://en.wikipedia.org/wiki/Rime_of_the_Ancient_Mariner
+
+.yi
+: <(Yes, PARTAI!|Not yet\.\.\.)>
+

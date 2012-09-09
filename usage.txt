@@ -1,0 +1,18 @@
+usage: duxlot [-h] [-a] [-c FILENAME] [-f] [-o FILENAME] [-w] [action] [alias]
+
+Control duxlot IRC bot instances
+
+positional arguments:
+  action                use --actions to show the available actions
+  alias                 the alias of the config file to use
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -a, --actions         show all available actions and their effects
+  -c FILENAME, --config FILENAME
+                        use this JSON configuration file
+  -f, --foreground      run in the foreground instead of as a daemon
+  -o FILENAME, --output FILENAME
+                        redirect daemon stdout and stderr to this filename
+  -w, --where           don't run anything, show the config file that would be
+                        used
