@@ -141,27 +141,32 @@ def resolve(identifier):
         return duxlot.config.aliases.get(alias)
 
     if identifier is None:
-        if duxlot.config.aliases.exists("default"):
-            return duxlot.config.aliases.get("default")
-        elif duxlot.config.exists(duxlot.config.default):
+        if duxlot.config.aliases.exists():
+            if duxlot.config.aliases.exists("default"):
+                return duxlot.config.aliases.get("default")
+
+        if duxlot.config.exists(duxlot.config.default):
             return duxlot.config.default
-        else:
-            print("Error: No default configuration file to use")
-            print("You can create one using:")
-            print("")
-            print("    duxlot create")
-            print("")
-            print("Or by setting a default alias:")
-            print("")
-            print("    duxlot alias <path> default")
-            sys.exit(1)
+
+        print("Error: No default configuration file to use")
+        print("You can create one using:")
+        print("")
+        print("    duxlot create")
+        print("")
+        print("Or by setting a default alias:")
+        print("")
+        print("    duxlot alias <path> default")
+        sys.exit(1)
 
     if "/" in identifier:
         return resolve_path(identifier)
 
     path = resolve_path(identifier)
     path_exists = os.path.isfile(path)
-    alias_exists = duxlot.config.aliases.exists(identifier)
+    if duxlot.config.aliases.exists():
+        alias_exists = duxlot.config.aliases.exists(identifier)
+    else:
+        alias_exists = False
 
     if path_exists and (not alias_exists):
         return path
