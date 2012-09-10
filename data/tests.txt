@@ -27,8 +27,7 @@ TIMEOUT
 : You can tell yourself that
 
 .attributes
-irc: <[a-z, ]+>
-input: <[a-z, ]+>
+env: <[a-z, ]+>
 
 .beats
 : @<[0-9]{3}>
@@ -134,9 +133,6 @@ More: http://google.com/news?q=Apple%20site%3Areuters.com
 
 .parsed-message
 : {<.*> 'command': 'PRIVMSG'<.*>}
-
-.prefix
-: Current prefix for here is "<[^"]+>"
 
 .py len("mâché!")
 8

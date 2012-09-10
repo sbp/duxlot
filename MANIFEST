@@ -4,6 +4,7 @@ __init__.py
 __main__.py
 api.py
 config.py
+console.py
 duxlot
 duxlot.py
 functions.py
@@ -19,3 +20,4 @@ data/unicodedata.pickle
 standard/admin.py
 standard/core.py
 standard/general.py
+standard/girc.py

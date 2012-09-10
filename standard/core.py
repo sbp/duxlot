@@ -8,65 +8,65 @@ import duxlot
 # 1st
 
 @duxlot.event("1st", concurrent=True)
-def startup(irc, input):
-    irc.send("NICK", irc.options["nick"])
-    irc.send("USER", "duxlot", "8", "*", "duxlot/irc.py")
+def startup(env):
+    env.send("NICK", env.options["nick"])
+    env.send("USER", "duxlot", "8", "*", "duxlot/env.py")
 
-    if "password" in irc.options["__options__"]:
-        irc.send("PASS", irc.options["password"])
+    if "password" in env.options["__options__"]:
+        env.send("PASS", env.options["password"])
 
-    if "nickserv" in irc.options["__options__"]:
-        irc.msg("NickServ", "IDENTIFY %s" % irc.options["nickserv"])
+    if "nickserv" in env.options["__options__"]:
+        env.msg("NickServ", "IDENTIFY %s" % env.options["nickserv"])
         time.sleep(2)
 
-    for channel in irc.options["channels"]:
+    for channel in env.options["channels"]:
         if (" " in channel) or ("," in channel):
             print("Not a valid channel name: %s" % channel)
         else:
-            irc.send("JOIN", channel)
+            env.send("JOIN", channel)
         time.sleep(0.25)
     time.sleep(0.5)
 
-    irc.send("WHO", irc.options["nick"])
+    env.send("WHO", env.options["nick"])
 
 # 352 (WHO Result)
 
 @duxlot.event("352")
-def who(irc, input):
-    if input.message["parameters"][0] == irc.options["nick"]:
-        nick = input.message["parameters"][0]
-        user = input.message["parameters"][2]
-        host = input.message["parameters"][3]
-        irc.data["address"] = nick + "!" + user + "@" + host
+def who(env):
+    if env.message["parameters"][0] == env.options["nick"]:
+        nick = env.message["parameters"][0]
+        user = env.message["parameters"][2]
+        host = env.message["parameters"][3]
+        env.data["address"] = nick + "!" + user + "@" + host
 
 # 433 (Nickname in Use)
 
 @duxlot.event("433")
-def nick_error(irc, input):
-    if not ("address" in irc.data):
+def nick_error(env):
+    if not ("address" in env.data):
         # haven't connected yet, panic!
         # @@ if a QUIT isn't sent, it actually hangs
-        irc.send("QUIT", "Quit")
-        irc.task(("quit",))
+        env.send("QUIT", "Quit")
+        env.task(("quit",))
 
 # NICK
 
 @duxlot.event("NICK")
-def set_nick(irc, input):
-    if input.nick == irc.options["nick"]:
-        irc.options["nick"] =     input.message["parameters"][0]
+def set_nick(env):
+    if env.nick == env.options["nick"]:
+        env.options["nick"] =     env.message["parameters"][0]
 
 # PING
 
 @duxlot.event("PING")
-def pong(irc, input):
-    irc.send("PONG", irc.options["nick"])
+def pong(env):
+    env.send("PONG", env.options["nick"])
 
 # PONG
 
 @duxlot.event("PONG")
-def received_pong(irc, input):
-    irc.data["ponged"] = time.time()
+def received_pong(env):
+    env.data["ponged"] = time.time()
 
 # @duxlot.startup
 # def check_channels():

@@ -406,6 +406,9 @@ def zoneinfo_offset(args):
     now = time.time()
     tzinfo = clock.parse_zoneinfo(filename=args.filename)
 
+    print("FILENAME", args.filename)
+    print("TZINFO", tzinfo)
+
     transition, offset, dst, abbreviation = tzinfo[0]
     out.offset = offset
     out.abbreviation = abbreviation

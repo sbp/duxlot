@@ -36,7 +36,6 @@ def modules_in_directory(directory):
 # @@ separate namespace for command chaining state
 # @@ note where the lock is used, and the types of usage
 # @@ periodic scheduling
-# @@ distutils and easy_install compatibility
 # @@ ..commands for web services, or .regular and .services other
 # @@ last n seconds of events, event list
 # @@ reload config. nick/channels/prefix might change, etc.
@@ -47,7 +46,6 @@ def modules_in_directory(directory):
 # @@ find out the flood limits
 # @@ recovering from process errors
 # @@ make tasks queue joinable
-# @@ tabs <-> spaces
 
 class Client(object):
     def __init__(self, options_filename, options_base, options_data):
@@ -450,8 +448,8 @@ def process_events(inactive, safe, events):
                 for function in events[priority].get(command, []):
                     def process_command():
                         # Must be inside, otherwise it may be GCed
-                        irc, input = create_environment(safe, message)
-                        try: function(irc, input)
+                        env = create_irc_env(safe, message)
+                        try: function(env)
                         except Exception as err:
                             safe.log("Error:", str(err))
 
@@ -563,24 +561,10 @@ def process_schedule(inactive, safe):
 
 # used by process:messages
 def handle_named(safe, named, message):
-    sender = message["parameters"][0]
-    input = message["parameters"][1]
+    env = create_irc_env(safe, message)
 
-    # @@ prefix used to be in the command module
-    # Could be a useful generic function
-    senders = safe.options["prefixes"]
-    if sender in senders:
-        prefix = senders[sender]
-    else: prefix = safe.options["prefix"]
-
-    if input.startswith(prefix):
-        input = input[len(prefix):]
-        if " " in input:
-            cmd, arg = input.split(" ", 1)
-        else:
-            cmd, arg = input, ""
-
-        if cmd in named:
+    if "command" in env:
+        if env.command in named:
             def used(cmd):
                 with safe.database.context("usage") as usage:
                     usage.setdefault(cmd, 0)
@@ -588,10 +572,10 @@ def handle_named(safe, named, message):
 
             def process_command():
                 # @@ multiprocessing.managers.RemoteError
-                irc, input = create_environment(safe, message, (prefix, arg))
+                env = create_irc_env(safe, message) # @@!
                 # @@ pre-command
                 if not safe.options["debug"]:
-                    try: named[cmd](irc, input)
+                    try: named[env.command](env)
                     # except duxlot.Error as err:
                     #     irc.say("API Error: %s" % err) # @@!
                     except Exception as err:
@@ -601,9 +585,9 @@ def handle_named(safe, named, message):
                         where = "%s:%s %s(...) %s" % tuple(item)
                         irc.say("Python Error. %s: %s" % (err, where))
                 else:
-                    named[cmd](irc, input)
+                    named[env.command](env)
                 # @@ post-command
-                used(cmd)
+                used(env.command)
 
             # while number_of_processes >= process_limit:
             #    time.sleep(0.5)
@@ -611,69 +595,6 @@ def handle_named(safe, named, message):
 
             process(process_command, tuple())
     safe.log("Quitting handle_named")
-
-# used by various
-def create_environment(safe, message, cmd=None):
-    input = create_input(safe, message, cmd=cmd)
-    irc = create_irc(safe, input)
-    return irc, input
-
-# used by create_environment
-def create_input(safe, message, cmd=None):
-    input = {}
-
-    input["nick"] = None
-    if "prefix" in message:
-        input["nick"] = message["prefix"]["nick"]
-
-    input["message"] = message
-    input["prefix"] = cmd[0] if cmd else None
-    input["arg"] = cmd[1] if cmd else None
-
-    input["sender"] = None
-    input["text"] = None
-    input["private"] = None
-    input["owner"] = None
-    input["admin"] = None
-    input["limit"] = None
-
-    if message["command"] == "PRIVMSG":
-        input["sender"] = message["parameters"][0]
-        input["adminchan"] = input["sender"] in safe.options["adminchans"]
-        input["private"] = input["sender"] == safe.options["nick"]
-        if input["private"]:
-            input["sender"] = input["nick"]
-
-        input["owner"] = input["nick"] == safe.options["owner"]
-        input["admin"] = input["nick"] in administrators(safe.options)
-        input["text"] = message["parameters"][1]
-
-    # should this be irc.limit?
-    if input["sender"] and ("address" in safe.data):
-        input["limit"] = 498 - len(input["sender"]) + len(safe.data["address"])
-
-    def credentials(person, place):
-        person_okay = False
-        if person == "owner":
-            person_okay = input["owner"]
-        elif person == "admin":
-            person_okay = input["owner"] or input["admin"]
-        # @@ person == "anyone" (for anyone + adminchan)
-
-        place_okay = False
-        if place == "anywhere":
-            place_okay = True
-        elif place == "adminchan":
-            place_okay = input["adminchan"] or input["private"]
-        elif place == "private":
-            place_okay = input["private"]
-
-        return person_okay and place_okay
-    input["credentials"] = credentials
-
-    # if input.credentials("owner", "anywhere")
-
-    return duxlot.FrozenStorage(input)
 
 # used by create_input
 def administrators(options):
@@ -686,39 +607,90 @@ def administrators(options):
         set.update(admins)
     return permitted
 
-# used by create_environment
-def create_irc(safe, input):
-    attributes = {
-        "data": safe.data,
-        "options": safe.options,
-        "lock": safe.lock,
-        "task": safe.tasks.put,
-        "database": safe.database,
-        "schedule": safe.schedule.put,
-        "sent": safe.sending.join,
-        "log": safe.log
-    }
+def create_irc_env(safe, message):
+    env = duxlot.Storage()
 
-    if input.sender:
+    env.message = message
+    env.event = message["command"]
+    if "prefix" in message:
+        env.nick = message["prefix"]["nick"]
+
+    if message["command"] == "PRIVMSG":
+        env.sender = message["parameters"][0]
+        env.text = message["parameters"][1]
+        if "address" in safe.data:
+            env.limit = 498 - len(env.sender) + len(safe.data["address"])
+
+        prefixes = safe.options["prefixes"]
+        if env.sender in prefixes:
+            prefix = prefixes[env.sender]
+        else:
+            prefix = safe.options["prefix"]
+
+        if env.text.startswith(prefix):
+            env.prefix = prefix
+            sans_prefix = env.text[len(prefix):]
+
+            if " " in sans_prefix:
+                env.command, env.arg = sans_prefix.split(" ", 1)
+            else:
+                env.command, env.arg = sans_prefix, ""
+
+        env.private = env.sender == safe.options["nick"]
+        if env.private:
+            env.sender = env.nick
+
+        # this should be in a separate admin augmentation
+        # only to be added if the admin module is loaded
+        env.owner = env.nick == safe.options["owner"]
+        env.admin = env.nick in administrators(safe.options) # @@!
+        env.adminchan = env.sender in safe.options["adminchans"]
+
+        def credentials(person, place):
+            person_okay = {
+                "owner": env.owner,
+                "admin": env.owner or env.admin
+            #   "anyone": True # @@ for anyone + adminchan
+            }.get(person, False)
+    
+            place_okay = {
+                "anywhere": True,
+                "adminchan": env.adminchan or env.private,
+                "private": env.private
+            }.get(place, False)
+
+            return person_okay and place_okay
+        env.credentials = credentials
+
+    env.data = safe.data
+    env.options = safe.options
+    env.lock = safe.lock
+    env.task = safe.tasks.put
+    env.database = safe.database
+    env.schedule = safe.schedule.put
+    env.sent = safe.sending.join
+    env.log = safe.log
+
+    if "sender" in env:
         def say(text):
-            safe.send_message("PRIVMSG", input.sender, text)
-        attributes["say"] = say
+            safe.send_message("PRIVMSG", env.sender, text)
+        env.say = say
 
-    if input.nick and input.sender:
+    if ("nick" in env) and ("sender" in env):
         def reply(text):
-            text = input.nick + ": " + text
-            safe.send_message("PRIVMSG", input.sender, text)
-        attributes["reply"] = reply
-
-    def msg(recipient, text):
-        safe.send_message("PRIVMSG", recipient, text)
-    attributes["msg"] = msg
+            text = env.nick + ": " + text
+            safe.send_message("PRIVMSG", env.sender, text)
+        env.reply = reply
 
     def send(*arguments):
         safe.send_message(*arguments)
-    attributes["send"] = send
+    env.send = send
 
-    return duxlot.FrozenStorage(attributes)
+    def msg(recipient, text):
+        safe.send_message("PRIVMSG", recipient, text)
+    env.msg = msg
+
+    return env
 
 # process-safe
 def create_send_message(sending, log):

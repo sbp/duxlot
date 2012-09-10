@@ -2,19 +2,42 @@
 # Code at http://inamidst.com/duxlot/
 # Apache License 2.0
 
+import sys
+
+if sys.version_info < (3, 2):
+    print("Error: Requires python 3.2 or later")
+    sys.exit(1)
+
 import argparse
 import atexit
 import os
 import signal
-import sys
 
 import duxlot
 
 signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
-if sys.version_info < (3, 2):
-    print("Error: Requires python 3.2 or later")
-    sys.exit(1)
+# Turn off buffering, like python3 -u
+# http://stackoverflow.com/questions/107705
+
+class Unbuffered:
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
+
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
+
+sys.stdout = Unbuffered(sys.stdout)
+sys.stderr = Unbuffered(sys.stderr)
+
+def action(function):
+    action.names[function.__name__] = function
+    return function
+action.names = {}
 
 def writeable(path):
     if os.path.exists(path):
@@ -29,7 +52,8 @@ def writeable(path):
 def fork(n):
     try: pid = os.fork()
     except OSError as err:
-        print("Error: Fork #%s failed: %s" % (n, err))
+        print("Error: Unable to fork on this OS: %s" % err)
+        print("Use the --foreground option to avoid running as a daemon")
         sys.exit(1)
     else:
         if pid > 0:
@@ -37,6 +61,10 @@ def fork(n):
 
 def redirect(a, b):
     os.dup2(b.fileno(), a.fileno())
+
+def only(args, targets):
+    others = set(vars(args).keys()) - targets
+    return not any(getattr(args, other) for other in others)
 
 def daemonise(args):
     if args.output is None:
@@ -103,14 +131,69 @@ def clean_pidfile(name, pid):
     print("Warning: This may mean duxlot did not exit cleanly")
     os.remove(name)
 
+def resolve(identifier):
+    def resolve_path(path):
+        path = os.path.expanduser(path)
+        return os.abspath(path)
+
+    def resolve_alias(alias):
+        alias = "default" if (alias is None) else alias
+        return duxlot.config.aliases.get(alias)
+
+    if identifier is None:
+        if duxlot.config.aliases.exists("default"):
+            return duxlot.config.aliases.get("default")
+        elif duxlot.config.exists(duxlot.config.default):
+            return duxlot.config.default
+        else:
+            print("Error: No default configuration file to use")
+            print("You can create one using:")
+            print("")
+            print("    duxlot create")
+            print("")
+            print("Or by setting a default alias:")
+            print("")
+            print("    duxlot alias <path> default")
+            sys.exit(1)
+
+    if "/" in identifier:
+        return resolve_path(identifier)
+
+    path = resolve_path(identifier)
+    path_exists = os.path.isfile(path)
+    alias_exists = duxlot.config.aliases.exists(identifier)
+
+    if path_exists and (not alias_exists):
+        return path
+
+    if alias_exists and (not path_exists):
+        return resolve_alias(identifier)
+
+    if path_exists and alias_exists:
+        print("Error: %s is both a path and an alias!" % identifier)
+        print("If you'd prefer one to be used as a default, open an issue:")
+        print("https://github.com/sbp/duxlot/issues/new")
+        sys.exit(1)
+
+    # Neither path_exists nor alias_exists
+    print("Error: %s is neither a valid path nor a known alias" % identifier)
+    sys.exit(1)
+
+@action
 def alias(args):
     "Set an alias for a configuration file"
-    args.alias = "default" if (args.alias is None) else args.alias
+    if not only(args, {"action", "identifier", "alias"}):
+        print("Error: Usage: duxlot alias <path> [<alias>]")
+        sys.exit(1)
 
-    if not args.config:
-        print("Error: You must also specify a config file to alias")
-        print("Use the --config flag to pass a config filename")
-        return 1
+    if not args.identifier:
+        print("Error: You must specify a <path> to alias")
+        sys.exit(1)
+
+    if not args.alias:
+        # print("Error: @@ Not yet implemented")
+        print("Error: You must specify an <alias> to set")
+        sys.exit(1)
 
     if not duxlot.config.aliases.exists():
         duxlot.config.aliases.create()
@@ -119,43 +202,52 @@ def alias(args):
     if existed is True:
         verb = "Changed alias"
         was = duxlot.config.aliases.get(args.alias)
-        if was == args.config:
-            print("Error: Alias %r is already set to %r" % (args.alias, args.config))
+        if was == args.identifier:
+            print("Error: Alias %r is already set to %r" % (args.alias, args.identifier))
             return 1
     else:
         verb = "Aliased"
 
-    duxlot.config.aliases.put(args.alias, args.config)
-    print("%s %r to %r" % (verb, args.alias, args.config))
+    duxlot.config.aliases.put(args.alias, args.identifier)
+    print("%s %r to %r" % (verb, args.alias, args.identifier))
     if existed is True:
         print("Was previously set to %r" % was)
     return 0
 
+@action
 def unalias(args):
     "Remove an alias for a configuration file"
-    args.alias = "default" if (args.alias is None) else args.alias
+    if not only(args, {"action", "identifier"}):
+        print("Error: Usage: duxlot unalias <alias>")
+        sys.exit(1)
+
+    if not args.identifier:
+        print("Error: You must specify an <alias> to remove")
+        sys.exit(1)
 
     if not duxlot.config.aliases.exists():
-        print("Error: The alias %r is not currently set" % args.alias)
+        print("Error: The alias %r is not currently set" % args.identifier)
         print("There are no currently set aliases")
         return 1
 
-    if not duxlot.config.aliases.exists(args.alias):
-        print("Error: The alias %r is not currently set" % args.alias)
+    if not duxlot.config.aliases.exists(args.identifier):
+        print("Error: The alias %r is not currently set" % args.identifier)
         return 1
 
-    value = duxlot.config.aliases.get(args.alias)
-    duxlot.config.aliases.remove(args.alias)
-    print("Removed the alias %r" % args.alias)
+    value = duxlot.config.aliases.get(args.identifier)
+    duxlot.config.aliases.remove(args.identifier)
+    print("Removed the alias %r" % args.identifier)
     print("Was previously set to %r" % value)
     return 0
 
+@action
 def active(args):
     "Check whether the specified duxlot instance is running"
-    config = config_from_args(args)
-    if (config is None) and (not duxlot.config.exists(duxlot.config.default)):
-        print("Error: No default configuration to use")
-        return 1
+    if not only(args, {"action", "identifier"}):
+        print("Error: Usage: duxlot active [<path-or-alias>]")
+        sys.exit(1)
+
+    config = resolve(args.identifier)
 
     filename, base, data = duxlot.config.info(config)
     if args.where:
@@ -183,38 +275,97 @@ def active(args):
         print("duxlot is not running")
         return 0
 
-def config_from_args(args):
-    if args.alias is not None:
-        if args.config:
-            print("Mutually exclusive options: --config and [ alias ]")
-            print("Couldn't choose between %r and %r" % (args.config, args.alias))
-            return 1
+@action
+def config(args):
+    "Show the config file associated with a particular alias"
+    if not only(args, {"action", "identifier"}):
+        print("Error: Usage: duxlot config <alias>")
+        sys.exit(1)
 
-        args.alias = args.alias or "default"
-        config = duxlot.config.aliases.get(args.alias)
-    elif (not args.config) and duxlot.config.aliases.exists():
-        if duxlot.config.aliases.exists("default"):
-            config = duxlot.config.aliases.get("default")
-        else: config = args.config
-    else:
-        config = args.config
-    return config
+    config = resolve(args.identifier)
+    print(args.identifier, "=", config)
 
+def help():
+    print("""\
+Usage:
+
+    duxlot --usage - Longer version of this help message
+    duxlot --version - Show the current duxlot version
+    duxlot --options - Show a list of available config options
+
+Control actions:
+
+    duxlot [FLAGS] start [<identifier>]
+        --foreground  -  don't run the bot as a daemon
+        --output <path>  -  redirect stdout and stderr to <path>
+    duxlot stop [<identifier>]
+    duxlot restart [<identifier>]
+    duxlot active [<identifier>]
+
+Configuration actions:
+
+    duxlot create
+    duxlot alias <path> <alias>
+    duxlot unalias <alias>
+    duxlot config <identifier>
+""")
+
+def usage():
+    print("""\
+Usage:
+
+    duxlot --help
+        Shorter version of this help message
+
+    duxlot --version
+        Show the current duxlot version
+
+    duxlot --options
+        Show a list of available config options
+
+Control actions:
+
+    duxlot [FLAGS] start [<identifier>]
+        Starts a bot. Optional [FLAGS]:
+
+            --foreground  -  don't run the bot as a daemon
+            --output <path>  -  redirect stdout and stderr to <path>
+
+        An <identifier> is a relative or absolute path, or an alias.
+        The value of "duxlot config" will be used by default.
+
+    duxlot stop [<identifier>]
+        Stops a bot
+
+    duxlot restart [<identifier>]
+        Restarts a bot. Calls stop then start
+
+    duxlot active [<identifier>]
+        Shows whether a bot is active
+
+Configuration actions:
+
+    duxlot create
+        Create a default configuration file
+
+    duxlot alias <path> <alias>
+        Set <alias> as an alias of <path>
+
+    duxlot unalias <alias>
+        Remove <alias> if it exists
+
+    duxlot config <identifier>
+        Show the config file referred to by <identifier>
+""")
+
+@action
 def start(args):
     "Start the specified duxlot instance"
+    if not only(args, {"foreground", "output", "action", "identifier"}):
+        print("Error: Usage: duxlot [-f] [-o] start [<path-or-alias>]")
+        sys.exit(1)
+
     import multiprocessing
-
-    config = config_from_args(args)
-    if (config is None) and (not duxlot.config.exists(duxlot.config.default)):
-        print("Error: No default configuration to use")
-        return 1
-
-    filename, base, data = duxlot.config.info(config)
-    if args.where:
-        print(filename)
-        return 0
-
-    args.pidfile = base + ".pid"
 
     # Semaphores are used in JoinableQueue, and possibly other things
     try: multiprocessing.Semaphore()
@@ -222,6 +373,14 @@ def start(args):
         print("Oh dear, your system might not allow POSIX Semaphores")
         print("See http://stackoverflow.com/questions/2009278 to fix")
         return 1
+
+    config = resolve(args.identifier)
+    if args.where:
+        print(config)
+        return 0
+
+    filename, base, data = duxlot.config.info(config)
+    args.pidfile = base + ".pid"
 
     # Does the PID file already exist?
     if os.path.isfile(args.pidfile):
@@ -242,18 +401,19 @@ def start(args):
 
     duxlot.client(filename, base, data)
 
+@action
 def stop(args):
     "Stop the specified duxlot instance"
-    config = config_from_args(args)
-    if (config is None) and (not duxlot.config.exists(duxlot.config.default)):
-        print("Error: No default configuration to use")
-        return 1
+    if not only(args, {"action", "identifier"}):
+        print("Error: Usage: duxlot stop [<path-or-alias>]")
+        sys.exit(1)
 
-    filename, base, data = duxlot.config.info(config)
+    config = resolve(args.identifier)
     if args.where:
-        print(filename)
+        print(config)
         return 0
 
+    filename, base, data = duxlot.config.info(config)
     args.pidfile = base + ".pid"
 
     if os.path.isfile(args.pidfile):
@@ -286,16 +446,26 @@ def stop(args):
         print("Error: duxlot is not running")
         return 1
 
+@action
 def restart(args):
     "Restart the specified duxlot instance"
+    if not only(args, {"action", "identifier"}):
+        print("Error: Usage: duxlot restart [<path-or-alias>]")
+        sys.exit(1)
+
     code = stop(args)
     if code != 0:
         print("Warning: Exiting without starting the bot")
         return 1
     return start(args)
 
+@action
 def create(args):
     "Create a default configuration file to work from"
+    if not only(args, {"create"}):
+        print("Error: Expected only 'create', no other options")
+        sys.exit(1)
+
     if not duxlot.config.exists(duxlot.config.default):
         duxlot.config.create()
         print("You may now edit the default configuration")
@@ -307,10 +477,14 @@ def create(args):
         sys.exit(1)
 
 def actions(args):
+    if not only(args, {"actions"}):
+        print("Error: Expected only --actions, no other options")
+        sys.exit(1)
+
     action_documentation = []
-    for action in sorted(action_map):
-        documentation = action_map[action].__doc__
-        doc = "%s - %s" % (action, documentation)
+    for action_name in sorted(action.names):
+        documentation = action.names[action_name].__doc__
+        doc = "%s - %s" % (action_name, documentation)
         action_documentation.append(doc)
     action_documentation = "\n".join(action_documentation)
     print("The following actions are available:")
@@ -318,26 +492,63 @@ def actions(args):
     print(action_documentation)
     return 0
 
+@action
 def options(args):
+    "Show valid duxlot configuration file option names"
+    # @@ --options? oh, but -o. -d --documentation?
+    if not only(args, {"options"}):
+        print("Error: Expected only 'options', no other options")
+        sys.exit(1)
+
     for (option, info) in sorted(duxlot.config.variables.items()):
         if info.public:
             print("%s: %s" % (option, info.documentation))
 
-# @@ config option, shows config belonging to alias
-action_map = {
-    "create": create,
-    "start": start,
-    "stop": stop,
-    "restart": restart,
-    "alias": alias,
-    "unalias": unalias,
-    "active": active,
-    "options": options
-}
+def version(args):
+    if not only(args, {"version"}):
+        print("Error: Expected only --version, no other options")
+        sys.exit(1)
+
+    print("duxlot", duxlot.version)
+
+# @@ an "aliases" action, to show all aliases
+
+def doc(text, local):
+    combined = dict(globals(), **local)
+    print(text.strip("\r\n").format(**combined))
+
+def unrecognised(action):
+    doc("""
+Unrecognised action: {action}
+
+Try viewing a list of valid actions:
+
+    {sys.argv[0]} --actions
+
+Or, to view a list of options:
+
+    {sys.argv[0]} --help
+""", vars())
+    sys.exit(1)
+
+def default():
+    doc("""
+To create a default configuration file to start from:
+
+    {sys.argv[0]}
+
+Or, to view a list of options:
+
+    {sys.argv[0]} --help
+""", vars())
+
+# @@ config action, shows config belonging to alias
 
 def main():
-    description = "Control duxlot IRC bot instances"
-    parser = argparse.ArgumentParser(description=description)
+    parser = argparse.ArgumentParser(
+        description="Control duxlot IRC bot instances",
+        add_help=False
+    )
     parser.add_argument(
         "-a", "--actions",
         help="show all available actions and their effects",
@@ -354,10 +565,14 @@ def main():
         action="store_true"
     )
     parser.add_argument(
+        "-h", "--help",
+        help="show a short help message",
+        action="store_true"
+    )
+    parser.add_argument(
         "-o", "--output",
         metavar="FILENAME",
-        help="redirect daemon stdout and stderr to this filename",
-        default=os.devnull
+        help="redirect daemon stdout and stderr to this filename"
     )
     # @@ a "which" action
     parser.add_argument(
@@ -366,43 +581,51 @@ def main():
         action="store_true"
     )
     parser.add_argument(
+        "--usage",
+        help="show a long usage message",
+        action="store_true"
+    )
+    parser.add_argument(
+        "-v", "--version",
+        help="show the current duxlot version",
+        action="store_true"
+    )
+    parser.add_argument(
         "action",
         help="use --actions to show the available actions",
         nargs="?"
     )
     parser.add_argument(
+        "identifier",
+        help="the path or alias of the configuration file to use",
+        nargs="?"
+    )
+    parser.add_argument(
         "alias",
-        help="the alias of the config file to use",
+        help="the alias to use in the corresponding action",
         nargs="?"
     )
     args = parser.parse_args()
 
-    if args.actions:
-        actions(args)
+    if args.help:
+        help()
+
+    elif args.usage:
+        usage()
+
+    elif args.version:
+        version(args)
+
     elif args.action:
-        if args.action in action_map:
-            code = action_map[args.action](args)
+        if args.action in action.names:
+            code = action.names[args.action](args)
             if isinstance(code, int):
                 sys.exit(code)
         else:
-            print("Unrecognised action: " + str(args.action))
-            print()
-            print("Try viewing a list of valid actions:")
-            print()
-            print("   %s --actions" % sys.argv[0])
-            print()
-            print("Or, to view a list of options:")
-            print()
-            print("   %s --help" % sys.argv[0]) # parser.prog
-            sys.exit(1)
+            unrecognised(args.action)
+
     elif not duxlot.config.exists(duxlot.config.default):
-        print("To create a default configuration file to start from:")
-        print()
-        print("   %s create" % sys.argv[0]) # parser.prog
-        print()
-        print("Or, to view a list of options:")
-        print()
-        print("   %s --help" % sys.argv[0]) # parser.prog
-        sys.exit(0)
+        default()
+
     else:
-        parser.print_help()
+        help() # parser.print_help()

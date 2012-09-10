@@ -7,9 +7,12 @@
 cd $(cat ~/.duxlot-src)
 echo In $PWD
 
+# @@ check diff-not-done
+# @@ make diff
+
 echo Updating version number
 python3 -c 'import api; print(api.version_number())' > data/version
-cat data/version
+DUXLOT_VERSION=$(cat data/version)
 
 echo Running python updates
 python3 prepare.py
@@ -25,7 +28,7 @@ echo Creating distribution, and uploading to the CheeseShop
 python3 setup.py sdist --formats=bztar upload
 
 echo Moving distribution into place
-rm -f ../*.tar.bz2
+mv ../*.tar.bz2 ~/
 mv dist/*.tar.bz2 ../
 
 echo Cleaning up files
@@ -37,4 +40,9 @@ find . -name '*.pyo' -exec rm {} \;
 find . -name '.DS_Store' -exec rm {} \;
 
 echo Upload to Github
-git add -A && git commit && git push -u origin master
+git add -A
+git commit
+git push -u origin master
+
+git tag -a $DUXLOT_VERSION -m "Version $DUXLOT_VERSION"
+git push --tags

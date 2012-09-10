@@ -44,3 +44,11 @@ def client(*args, **kargs):
     else:
         from irc import Client
     Client(*args, **kargs)
+
+import os.path
+
+with open(os.path.join(path, "data", "version"), encoding="ascii") as f:
+    version = f.read()
+    version = version.rstrip()
+
+del os

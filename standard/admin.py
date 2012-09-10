@@ -7,20 +7,20 @@ import duxlot
 command = duxlot.command
 
 @command
-def admin(irc, input):
+def admin(env):
     # this should be an administrative command
     # show whether the user, or the arg nick, is an admin
     ...
 
 @command
-def commands(irc, input):
+def commands(env):
     "Output all commands and descriptions to a local file"
-    if input.owner:
+    if env.owner:
         def document(filename, named):
             import os.path
             filename = os.path.expanduser(filename)
 
-            with irc.lock:
+            with env.lock:
                 with open(filename, "w", encoding="utf-8") as f:
                     for name, function in sorted(named.items()):
                         w.write("." + name + "\n")
@@ -32,161 +32,161 @@ def commands(irc, input):
 
         try: document("~/.duxlot-commands", duxlot.commands)
         except (IOError, OSError) as err:
-            irc.reply("Error: " + str(err))
+            env.reply("Error: " + str(err))
         else:
-            irc.reply("Written to " + input.arg)
+            env.reply("Written to " + env.arg)
 
 @command
-def database_export(irc, input):
+def database_export(env):
     "Export part of the bot's persistent database"
-    if input.owner and input.private:
-        name = irc.database.export(input.arg)
-        irc.reply("Exported \"%s\" to \"%s\"" % (input.arg, name))
+    if env.owner and env.private:
+        name = env.database.export(env.arg)
+        env.reply("Exported \"%s\" to \"%s\"" % (env.arg, name))
 
 @command
-def database_load(irc, input):
+def database_load(env):
     "Load a database"
-    if input.owner:
-        data = irc.database.load(input.arg)
-        irc.reply(repr(data))
+    if env.owner:
+        data = env.database.load(env.arg)
+        env.reply(repr(data))
 
 @command
-def join(irc, input):
+def join(env):
     "Command the bot to join a new channel"
-    if input.admin:
-        irc.send("JOIN", input.arg)
+    if env.admin:
+        env.send("JOIN", env.arg)
 
 @command
-def me(irc, input):
+def me(env):
     "Command the bot to perform an action message"
-    if input.admin and input.private:
-        recipient, text = input.arg.split(" ", 1)
+    if env.admin and env.private:
+        recipient, text = env.arg.split(" ", 1)
         text = "\x01ACTION %s\x01" % text
-        irc.send("PRIVMSG", recipient, text)
+        env.send("PRIVMSG", recipient, text)
 
 @command
-def msg(irc, input):
+def msg(env):
     "Command the bot to send a message"
-    if input.admin and input.private:
-        recipient, text = input.arg.split(" ", 1)
-        irc.send("PRIVMSG", recipient, text)
+    if env.admin and env.private:
+        recipient, text = env.arg.split(" ", 1)
+        env.send("PRIVMSG", recipient, text)
 
 @command
-def nick(irc, input):
+def nick(env):
     "Change the nickname of the bot"
-    if input.owner and input.private:
-        irc.send("NICK", input.arg)
+    if env.owner and env.private:
+        env.send("NICK", env.arg)
 
 @command
-def noted_links(irc, input):
+def noted_links(env):
     "Show currently noted links from all channels"
-    if input.admin and input.private:
-        irc.say(str(irc.database.cache.links))
+    if env.admin and env.private:
+        env.say(str(env.database.cache.links))
 
 @command
-def part(irc, input):
+def part(env):
     "Command the bot to part a channel"
-    if input.admin:
-        irc.send("PART", input.arg)
+    if env.admin:
+        env.send("PART", env.arg)
 
 @command
-def prefix(irc, input):
+def prefix(env):
     "Change the prefix used before named commands"
-    if input.admin:
-        if input.arg.startswith("#") and (" " in input.arg):
-            channel, prefix = input.arg.split(" ", 1)
-            # if not ("prefixes" in irc.options["__options__"]):
-            #     irc.options["prefixes"] = {}
-            prefixes = irc.options["prefixes"]
+    if env.admin:
+        if env.arg.startswith("#") and (" " in env.arg):
+            channel, prefix = env.arg.split(" ", 1)
+            # if not ("prefixes" in env.options["__options__"]):
+            #     env.options["prefixes"] = {}
+            prefixes = env.options["prefixes"]
             prefixes[channel] = prefix
-            irc.options["prefixes"] = prefixes
-            irc.reply("Okay, set prefix to \"%s\" for %s" % (prefix, channel))
+            env.options["prefixes"] = prefixes
+            env.reply("Okay, set prefix to \"%s\" for %s" % (prefix, channel))
         else:
-            irc.options["prefix"] = input.arg
-            irc.reply("Okay, set prefix to \"%s\"" % input.arg)
-    elif input.arg:
-        irc.reply("Sorry, that's an admin-only feature!")
+            env.options["prefix"] = env.arg
+            env.reply("Okay, set prefix to \"%s\"" % env.arg)
+    elif env.arg:
+        env.reply("Sorry, that's an admin-only feature!")
 
 @command
-def prefixes(irc, input):
+def prefixes(env):
     "Show all prefixes used across all channels for all named commands"
-    if input.admin:
-        prefixes = irc.options["prefixes"]
-        prefixes["*"] = irc.options["prefix"]
+    if env.admin:
+        prefixes = env.options["prefixes"]
+        prefixes["*"] = env.options["prefix"]
         p = ["%s: \"%s\"" % (a, b) for a, b in sorted(prefixes.items())]
-        irc.reply(", ".join(p))
+        env.reply(", ".join(p))
     else:
-        irc.reply("Sorry, that's an admin-only feature!")
+        env.reply("Sorry, that's an admin-only feature!")
 
 @command
-def processes(irc, input):
+def processes(env):
     "Show the number of processes running, and their names"
-    if input.admin: 
-        irc.task(("processes", input.sender, input.nick))
+    if env.admin: 
+        env.task(("processes", env.sender, env.nick))
     else:
-        irc.reply("That's an admin-only feature")
+        env.reply("That's an admin-only feature")
         # or, Ask an admin to do that
 
 # @@ temp-admin?
 
 @command
-def quit(irc, input):
+def quit(env):
     "Request the bot to quit from the server and exit"
-    if input.credentials("owner", "adminchan"):
-    # if input.owner and input.private:
-        irc.send("QUIT", "%s made me do it" % input.nick)
-        irc.sent()
-        irc.task(("quit",))
+    if env.credentials("owner", "adminchan"):
+    # if env.owner and env.private:
+        env.send("QUIT", "%s made me do it" % env.nick)
+        env.sent()
+        env.task(("quit",))
 
 @command
-def reload(irc, input):
+def reload(env):
     "Reload all commands and services"
-    if input.credentials("admin", "adminchan"):
-    # if input.admin: # @@ private, admin-channel only?
+    if env.credentials("admin", "adminchan"):
+    # if env.admin: # @@ private, admin-channel only?
         # could send reloading first, then join send queue
-        irc.reply("Okay, reloading...")
-        irc.sent()
-        irc.task(("reload", input.sender, input.nick))
+        env.reply("Okay, reloading...")
+        env.sent()
+        env.task(("reload", env.sender, env.nick))
     else:
-        irc.reply("That's an admin-only feature")
+        env.reply("That's an admin-only feature")
         # or, Ask an admin to do that
 
 @command
-def restart(irc, input):
+def restart(env):
     "Restart the bot"
-    if input.owner:
-        irc.task(("restart",))
+    if env.owner:
+        env.task(("restart",))
 
 @command
-def service(irc, input):
+def service(env):
     "Display the results of an internal service call"
-    if not input.arg:
-        return irc.reply(service.__doc__)
+    if not env.arg:
+        return env.reply(service.__doc__)
 
-    if input.admin:
+    if env.admin:
         import json
-        service_name, json_data = input.arg.split(" ", 1)
+        service_name, json_data = env.arg.split(" ", 1)
     
         kargs = json.loads(json_data)
         o = api.services_manifest[service_name](**kargs)
-        try: irc.reply("JSON: " + json.dumps(o()))
+        try: env.reply("JSON: " + json.dumps(o()))
         except Exception:
-            irc.reply("Non-JSON: " + repr(o))
+            env.reply("Non-JSON: " + repr(o))
 
 @command
-def supercombiner(irc, input):
+def supercombiner(env):
     "Print the supercombiner"
-    if input.admin:
-        irc.say(api.unicode.supercombiner())
+    if env.admin:
+        env.say(api.unicode.supercombiner())
     else:
-        irc.reply("This is an admin-only feature")
+        env.reply("This is an admin-only feature")
 
 @command
-def update_unicode_data(irc, input):
-    if input.owner:
-        irc.say("Updating unicodedata.pickle...")
+def update_unicode_data(env):
+    if env.owner:
+        env.say("Updating unicodedata.pickle...")
         try: api.unicode.update_unicode_data()
         except Exception as err:
-            irc.reply("Error: " + str(err))
+            env.reply("Error: " + str(err))
         else:
-            irc.reply("Done. You may now reload")
+            env.reply("Done. You may now reload")
