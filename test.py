@@ -1,99 +1,82 @@
-#!/usr/bin/env python3
-# @@ -Ou
-
 # Copyright 2012, Sean B. Palmer
 # Code at http://inamidst.com/duxlot/
 # Apache License 2.0
 
-import queue
+import multiprocessing
+import os
 import re
 import socket
-import threading
+import socketserver
+import sys
 import time
 
-import api
+# Save PEP 3122!
+if "." in __name__:
+    from . import api
+else:
+    import api
 
-def nick():
-    import random
-    rare = "zqxjkvbpyg"
-    return "".join(random.choice(rare) for i in range(8))
+connections = 0
+test_counter = 0
+tests = {}
 
-class Client(object):
-    def __init__(self, options):
-        self.socket = socket.socket(socket.AF_INET, socket.TCP_NODELAY)
-        self.socket.connect(("irc.freenode.net", 6667))
+def test(test_function):
+    global test_counter
 
-        if not ("nick" in options):
-            options["nick"] = nick()
+    def decorated(conn):
+        test_function(conn)
 
-        self.safe = type("Safe", (object,), {
-            "__slots__": [],
-            "received": queue.Queue(),
-            "sending": queue.Queue(),
-            "sockfile": self.socket.makefile("rb"),
-            "send": self.socket.send,
-            "options": options
-        })()
+    test_counter += 1
+    decorated.number = test_counter
+    tests[decorated.number] = decorated
+    return decorated
 
-        self.thread(self.receive_thread)
-        self.thread(self.send_thread)
+# @@ quit from a test, then start a new instance
 
-        self.put = self.safe.sending.put
+@test
+def mysterious_empty_connection(conn):
+    ...
 
-        self.send("NICK " + self.safe.options["nick"])
-        self.send("USER test 8 * duxlot/test.py")
-        self.send("JOIN " + self.safe.options["channel"])
+# @test
+def test_timeout(conn):
+    conn.handshake()
+    conn.nowt()
 
-        self.tests = []
-        self.setup()
+with open("data/tests.txt", encoding="utf-8") as f:
+    text = f.read()
 
-        while True:
-            item = self.safe.received.get()
-            if item["command"] == "366": # End of NAMES list
-                if item["parameters"][1] == self.safe.options["channel"]:
-                    break
+for lines in text.split("\n\n"):
+    def build(lines):
+        lines = lines.rstrip("\n")
+        if not lines:
+            return
+        # if not lines.startswith(".in"):
+        #     return
 
-        while True:
-            item = self.safe.received.get()
-            if item["command"] == "PRIVMSG":
-                if item["parameters"][0] == self.safe.options["channel"]:
-                    if item["parameters"][1] == "start!":
-                        break
-
-        self.test()
-
-    def send(self, text):
-        self.put(text.encode("utf-8"))
-
-    def setup(self):
-        def constructor(command):
-            def append(text):
-                self.tests.append((command, text))
-            return append
-
-        send = constructor("send")
-        receive = constructor("receive")
-        match = constructor("match")
-        search = constructor("search")
-
-        # Tests
-
-        with open("data/tests.txt") as f:
-            for line in f:
-                line = line.rstrip("\r\n")
-                if not line:
-                    continue
-
-                line = line.replace("$(BOT)", self.safe.options["bot"])
-                line = line.replace("$(USER)", self.safe.options["nick"])
-
+        # @@ expected
+        @test
+        def test_function(conn):
+            conn.handshake()
+    
+            for line in lines.split("\n"):
+                line = line.replace("$(BOT)", "duxlot")
+                line = line.replace("$(USER)", "user")
+    
                 if line.startswith("."):
-                    self.tests.append(("send", line))
-
+                    conn.send(":user!~user@localhost", "PRIVMSG", "#duxlot", line)
+                elif line == "TIMEOUT":
+                    conn.nowt()
+                elif line.startswith("WAIT "):
+                    time.sleep(int(line.split(" ").pop().strip()))
                 else:
                     if line.startswith(": "):
-                        line = self.safe.options["nick"] + line
-
+                        line = "user" + line
+                    got = conn.recv()
+                    conn.equal(got.get("command"), "PRIVMSG",
+                        "Expected PRIVMSG, got %s" % got)
+                    # @@ check it's to #duxlot
+                    got = got["parameters"][1]
+    
                     if "<" in line:
                         patterns = []
                         for part in re.findall("<[^>]+>|[^<]+", line):
@@ -101,114 +84,153 @@ class Client(object):
                                 patterns.append(part[1:-1])
                             else:
                                 patterns.append(re.escape(part))
-                        self.tests.append(("match", "".join(patterns)))
+                        pattern = "^" + "".join(patterns) + "$"
+                        conn.match(pattern, got, "Expected %r, got %r" % (pattern, got))
                     else:
-                        self.tests.append(("receive", line))
+                        conn.equal(line, got, "Expected %r, got %r" % (line, got))
+                # @@ then a nowt?
+    build(lines[:])
 
-        send(self.safe.options["bot"] + "!")
-        receive("$(nick)!")
+# @test
+def test_scheduler(conn):
+    conn.handshake()
+    time.sleep(60)
 
-    def test(self):
-        def received(item, text):
-            return item["parameters"][1] == text
+# @test
+def test_maximum_processes(conn):
+    conn.handshake()
+    for i in range(6):
+        conn.send(":owner!~owner@localhost", "PRIVMSG", "duxlot", ".test-hang")
+        # conn.recv()
+        time.sleep(1)
+    time.sleep(30)
 
-        def matched(item, text):
-            print(text)
-            print(re.match("^%s$" % text, item["parameters"][1]))
-            return re.match("^%s$" % text, item["parameters"][1]) is not None
+# @test
+def quit(conn):
+    conn.handshake()
+    conn.send(":owner!~owner@localhost", "PRIVMSG", "duxlot", ".quit")
 
-        def searched(item, text):
-            return re.search(text, item["parameters"][1]) is not None
+@test
+def quit2(conn):
+    conn.send(":localhost", "NOTICE", "*", "Welcome!")
+    conn.send(":owner!~owner@localhost", "PRIVMSG", "duxlot", ".quit")
+    time.sleep(3)
 
-        for command, text in self.tests:
-            text = text.replace("$(nick)", self.safe.options["nick"])
-            channel = self.safe.options["channel"]
+class Test(socketserver.StreamRequestHandler):
+    timeout = 6
 
-            if command == "send":
-                if text.startswith("."):
-                    text = self.safe.options["prefix"] + text[1:] # @@
-                    # text = "." + text # @@                
-                self.send("PRIVMSG " + channel + " :" + text)
+    def handle(self, *args, **kargs):
+        global connections, test_counter
 
-            elif command in {"receive", "match", "search"}:
-                timeout = 10
-                start = time.time()
-                while True:
-                    try: item = self.safe.received.get(timeout=timeout)
-                    except queue.Empty:
-                        print("Timed out!")
-                        self.send("PRIVMSG " + channel + " :sbp: Timed out!")
-                        item = None
-                        break
+        connections += 1
+        self.connection = connections
+        self.messages = 0
 
-                    if item["command"] == "PRIVMSG":
-                        if item["prefix"]["nick"] == self.safe.options["bot"]:
-                            break
+        # print(dir(self.server))
+        self.send(":localhost", "NOTICE", "*", "Test #%s" % self.connection)
 
-                    timeout = 10 - (time.time() - start)
-                    if timeout <= 0:
-                        print("Timed out!")
-                        self.send("PRIVMSG " + channel + " :sbp: Timed out!")
-                        item = None
-                        break
+        if self.connection in tests:
+            print("Test #%s" % self.connection)
+            tests[self.connection](self)
 
-                if item:                    
-                    success = {
-                        "receive": received,
-                        "match": matched,
-                        "search": searched
-                    }[command]
+            # print(self.connection, test_counter)
+            if self.connection == test_counter:
+                print("Tests complete")
+                self.finish()
+                os._exit(0)
 
-                    if success(item, text):
-                        print("Success")
-                    else:
-                        print("Failure")
-                        FAILURE = "----- FAILURE! -----"
-                        self.send("PRIVMSG " + channel + " :sbp: " + FAILURE)
-                        self.send("PRIVMSG " + channel + " :Expected: " + text)
+    def match(self, a, b, message):
+        if not re.match(a, b):
+            print("ERROR: Test #%s: %s" % (self.connection, message))
+            self.stop()
 
-            time.sleep(1)
+    def equal(self, a, b, message):
+        if a != b:
+            print("ERROR: Test #%s: %s" % (self.connection, message))
+            self.stop()
 
-    def thread(self, method):
-        t = threading.Thread(target=method, args=(self.safe,))
-        t.start()
+    def not_equal(self, a, b, message):
+        if a == b:
+            print("ERROR: Test #%s: %s" % (self.connection, message))
+            self.stop()
 
-    @staticmethod
-    def receive_thread(safe):
-        for line in safe.sockfile:
-            print(line)
-            parsed = api.irc.parse_message(octets=line)()
-            # print(parsed)
-            if parsed["command"] == "PING":
-                nick = safe.options["nick"].encode("us-ascii")
-                safe.send(b"PONG :" + nick + b"\r\n")
-            safe.received.put(parsed)
+    def stop(self):
+        sys.exit(0)
 
-    @staticmethod
-    def send_thread(safe):
-        while True:
-            octets = safe.sending.get()
-            if octets is StopIteration:
-                break
-            if not isinstance(octets, bytes):
-                continue
-            octets = octets.replace(b"\r", b"")
-            octets = octets.replace(b"\n", b"")
-            octets = octets[:510] + b"\r\n"
-            safe.send(octets)
-            print("->", octets)
-            time.sleep(1)
+    def handshake(self):
+        nick = self.recv()
+        self.equal(nick["command"], "NICK", "Expected NICK")
+
+        user = self.recv()
+        self.equal(user["command"], "USER", "Expected USER")
+
+        join = self.recv()
+        self.equal(join["command"], "JOIN", "Expected JOIN")
+
+        who = self.recv()
+        self.equal(who["command"], "WHO", "Expected WHO")
+
+    def recv(self):
+        try: octets = self.rfile.readline()
+        except socket.timeout:
+            print("ERROR: Test #%s: timeout" % self.connection)
+            self.stop()
+
+        o = api.irc.parse_message(octets=octets)
+        self.messages += 1
+        o.count = self.messages
+        return o()
+
+    def nowt(self):
+        try: octets = self.rfile.readline()
+        except socket.timeout:
+            return True
+        else:
+            text = octets.decode("utf-8", "replace")
+            args = (self.connection, text)
+            print("ERROR: Test #%s: Expected timeout, got %r" % args)
+
+    def send(self, *args):
+        args = list(args)
+        if len(args) > 1:
+            args[-1] = ":" + args[-1]
+        octets = " ".join(args).encode("utf-8", "replace")
+        octets = octets.replace(b"\r", b"")
+        octets = octets.replace(b"\n", b"")
+        if len(octets) > 510:
+            octets = octets[:510]
+        self.wfile.write(octets + b"\r\n")
+        self.wfile.flush()
+
+    # def user
+    # def channel
+
+    def finish(self, *args, **kargs):
+        socketserver.StreamRequestHandler.finish(self)
+
+        try:
+            self.request.shutdown(socket.SHUT_RDWR)
+            self.request.close()
+        except socket.error:
+            ...
+
+class Server(socketserver.TCPServer):
+    ...
+
+    # @@ if SystemExit, fine, otherwise raise it and os._exit(1)
+    def handle_error(self, request, client_address):
+        etype, evalue, etrace = sys.exc_info()
+        if etype is SystemExit:
+            return
+
+        import traceback
+        print("Framework Error:", etype, evalue)
+        traceback.print_exc()
+        os._exit(1)
 
 def main():
-    import os.path
-    import json
-
-    with open(os.path.expanduser("~/.duxlot-test")) as f:
-        config = json.load(f)
-
-    Client(config)
+    server = Server(("", 61070), Test)
+    server.serve_forever()
 
 if __name__ == "__main__":
     main()
-
-# eof

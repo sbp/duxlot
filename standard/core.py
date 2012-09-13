@@ -17,15 +17,18 @@ def startup(env):
 
     if "nickserv" in env.options["__options__"]:
         env.msg("NickServ", "IDENTIFY %s" % env.options["nickserv"])
-        time.sleep(2)
+        if not env.options["flood"]:
+            time.sleep(2)
 
     for channel in env.options["channels"]:
         if (" " in channel) or ("," in channel):
-            print("Not a valid channel name: %s" % channel)
+            duxlot.output.write("Not a valid channel name: %s" % channel)
         else:
             env.send("JOIN", channel)
-        time.sleep(0.25)
-    time.sleep(0.5)
+        if not env.options["flood"]:
+            time.sleep(0.25)
+    if not env.options["flood"]:
+        time.sleep(0.5)
 
     env.send("WHO", env.options["nick"])
 
@@ -47,7 +50,7 @@ def nick_error(env):
         # haven't connected yet, panic!
         # @@ if a QUIT isn't sent, it actually hangs
         env.send("QUIT", "Quit")
-        env.task(("quit",))
+        env.schedule((0, "quit",))
 
 # NICK
 

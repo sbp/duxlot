@@ -21,7 +21,7 @@ def commands(env):
             filename = os.path.expanduser(filename)
 
             with env.lock:
-                with open(filename, "w", encoding="utf-8") as f:
+                with duxlot.filesystem.open(filename, "w", encoding="utf-8") as w:
                     for name, function in sorted(named.items()):
                         w.write("." + name + "\n")
             
@@ -34,7 +34,7 @@ def commands(env):
         except (IOError, OSError) as err:
             env.reply("Error: " + str(err))
         else:
-            env.reply("Written to " + env.arg)
+            env.reply("Written to ~/.duxlot-commands")
 
 @command
 def database_export(env):
@@ -122,7 +122,7 @@ def prefixes(env):
 def processes(env):
     "Show the number of processes running, and their names"
     if env.admin: 
-        env.task(("processes", env.sender, env.nick))
+        env.schedule((0, "processes", env.sender, env.nick))
     else:
         env.reply("That's an admin-only feature")
         # or, Ask an admin to do that
@@ -133,20 +133,17 @@ def processes(env):
 def quit(env):
     "Request the bot to quit from the server and exit"
     if env.credentials("owner", "adminchan"):
-    # if env.owner and env.private:
-        env.send("QUIT", "%s made me do it" % env.nick)
-        env.sent()
-        env.task(("quit",))
+        env.schedule((0, "quit", env.nick))
 
 @command
-def reload(env):
+def reload2(env):
     "Reload all commands and services"
     if env.credentials("admin", "adminchan"):
     # if env.admin: # @@ private, admin-channel only?
         # could send reloading first, then join send queue
         env.reply("Okay, reloading...")
         env.sent()
-        env.task(("reload", env.sender, env.nick))
+        env.schedule((0, "reload", env.sender, env.nick))
     else:
         env.reply("That's an admin-only feature")
         # or, Ask an admin to do that
@@ -155,7 +152,7 @@ def reload(env):
 def restart(env):
     "Restart the bot"
     if env.owner:
-        env.task(("restart",))
+        env.schedule((0, "restart",))
 
 @command
 def service(env):
@@ -182,6 +179,15 @@ def supercombiner(env):
         env.reply("This is an admin-only feature")
 
 @command
+def test_hang(env):
+    "Test a long hang, 120 seconds"
+    if env.owner:
+        import time
+        env.say("Hanging...")
+        time.sleep(120)
+        env.say("Done!")
+
+@command
 def update_unicode_data(env):
     if env.owner:
         env.say("Updating unicodedata.pickle...")
@@ -190,3 +196,53 @@ def update_unicode_data(env):
             env.reply("Error: " + str(err))
         else:
             env.reply("Done. You may now reload")
+
+### Events ###
+
+# 433 (Nickname already in use)
+
+@duxlot.event("433")
+def nick_error2(env):
+    if "address" in env.data:
+        nick = env.message["parameters"][1]
+        error = "Somebody tried to change my nick to %s," % nick
+        error += " but that nick is already in use"
+        env.msg(env.options["owner"], error)
+
+### Builders ###
+
+# used by create_input
+def administrators(options):
+    permitted = set()
+    owner = options["owner"]
+    if owner:
+        permitted.add(owner)
+    admins = options["admins"]
+    if admins:
+        set.update(set(admins))
+    return permitted
+
+@duxlot.builder
+def build_admin(env):
+    if env.event == "PRIVMSG":
+        env.owner = env.nick == env.options["owner"]
+        env.admin = env.nick in administrators(env.options) # @@!
+        env.adminchan = env.sender in env.options["adminchans"]
+    
+        def credentials(person, place):
+            person_okay = {
+                "owner": env.owner,
+                "admin": env.owner or env.admin
+            #   "anyone": True # @@ for anyone + adminchan
+            }.get(person, False)
+    
+            place_okay = {
+                "anywhere": True,
+                "adminchan": env.adminchan or env.private,
+                "private": env.private
+            }.get(place, False)
+    
+            return person_okay and place_okay
+        env.credentials = credentials
+
+    return env

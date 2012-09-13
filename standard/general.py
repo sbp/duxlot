@@ -206,7 +206,9 @@ def ety(env):
         example = "Example: %setymology frog"
         return env.reply(example % env.prefix)
 
-    try: opt = api.word.etymology(term=env.arg, limit=env.limit)
+    limit = env().get("limit", 360)
+
+    try: opt = api.word.etymology(term=env.arg, limit=limit)
     except api.Error as err:
         msg = "Nothing found. Try http://etymonline.com/search.php?term=%s"
         return env.say (msg % env.arg)
@@ -332,7 +334,8 @@ def help(env):
     if env.arg:
         about(env)
     else:
-        env.say("I am duxlot. You are not. WRITTEN IN PYTHON3™")
+        message = "I am %s. Details: http://inamidst.com/duxlot/"
+        env.say(message % env.options["nick"])
 
 # @@ filetype, site
 @command
@@ -361,8 +364,11 @@ def _in(env):
     if not opt.seconds:
         return env.reply("Couldn't understand your duration. Use units?")
 
-    e = (opt.unixtime, env.sender, env.nick, opt.remainder)
-    env.schedule(e)
+    if opt.remainder:
+        text = env.nick + ": " + opt.remainder
+    else:
+        text = env.nick + "!"
+    env.schedule((opt.unixtime, "msg", env.sender, text))
 
     # @@ needs to use the time zone *at opt.unixtime*, not current!
     offset, abbreviation = zone_from_nick(env, env.nick)
@@ -410,6 +416,14 @@ def leo(env):
     env.reply(opt.text + " — " + opt.url)
 
 @command
+def load_services(env):
+    "Load the new services"
+    global web_services_manifest
+    web_services_manifest = api.services.manifest()
+    env.database.dump("services", web_services_manifest)
+    env.reply("%s services loaded" % len(web_services_manifest))
+
+@command
 def mangle(env):
     "Put a phrase through the multiple translation mangle"
     if not env.arg:
@@ -433,7 +447,7 @@ def mangle(env):
 @command
 def maximum(env):
     "Discover the maximum number of byte content that can be sent per message"
-    if env.limit is None:
+    if not "limit" in env:
         return env.say("I don't know the text limit at the moment, sorry")
     message = "The maximum length text I can send here is %s bytes"
     env.say(message % env.limit)
@@ -519,6 +533,12 @@ def py(env):
         env.say("Sorry, no result!")
 
 @command
+def reload(env):
+    "Reload all commands and services"
+    env.sent()
+    env.schedule((0, "reload", env.sender, env.nick))
+
+@command
 def rhymes(env):
     "Show some perfect rhymes of a word"
     try: text = api.word.rhymes(word=env.arg)
@@ -536,6 +556,11 @@ def search_trio(env):
     result = api.search.trio(phrase=env.arg)
     env.reply(result)
 
+@command
+def services(env):
+    "Show the number of loaded services"
+    env.reply("%s services available" % len(web_services_manifest))
+
 # @@ uses env.nick, not generic
 @command
 def snippets(env):
@@ -544,7 +569,8 @@ def snippets(env):
         return env.reply(snippets.__doc__)
 
     snippets = api.google.search_api_snippets(phrase=env.arg)
-    limit = (env.limit or 256) - len(env.nick + ": ") - 128
+    limit = env().get("limit", 256)
+    limit = limit - len(env.nick + ": ") - 128
     snippets = " / ".join(snippets)[:limit - 3] + "..."
     env.reply(snippets)
 
@@ -577,8 +603,9 @@ def t(env):
         )
         env.say(dt)
 
-    elif env.arg in api.clock.timezones_data:
-        dt = api.clock.timezone_datetime(tz=env.arg)
+    # @@ upper...
+    elif env.arg.upper() in api.clock.timezones_data:
+        dt = api.clock.timezone_datetime(tz=env.arg.upper())
         env.say(dt) # @@ add the tz name?
 
     elif api.clock.data.regex_number.match(env.arg):
@@ -608,12 +635,6 @@ def _time(env):
     offset, abbreviation = zone_from_nick(env, env.nick)
     dt = api.clock.format_datetime(format="%H:%M:%S", offset=offset)
     env.say(dt)
-
-@command
-def time_taken(env):
-    "Smallest and biggest times taken by the scheduler"
-    env.say("Smallest: %s" % env.data["smallest_time"])
-    env.say("Biggest: %s" % env.data["biggest_time"])
 
 # @@ <sbp> ..timer g
 # <duxlot[t?]> sbp: http://en.wikipedia.org/wiki/G-force
@@ -1006,16 +1027,6 @@ def startup(env):
     for name in ("seen", "links", "messages", "timezones"):
         env.database.init(name, {})
 
-# 433 (Nickname already in use)
-
-@event("433")
-def nick_error2(env):
-    if ("address" in env.data):
-        nick = env.message["parameters"][1]
-        error = "Somebody tried to change my nick to %s," % nick
-        error += " but that nick is already in use"
-        env.msg(env.options["owner"], error)
-
 # PRIVMSG
 
 @event("PRIVMSG")
@@ -1076,14 +1087,20 @@ def privmsg_event(env):
 ### Other ###
 
 @duxlot.startup
-def cache_data():
+def cache_data(safe):
+    # @@ could this be even faster?
     api.clock.cache_timezones_data()
     api.unicode.cache_unicode_data()
 
+web_services_manifest = {}
+
 @duxlot.startup
-def create_web_services():
-    manifest = api.services.manifest()
-    items = manifest.items()
+def create_web_services(safe):
+    global web_services_manifest
+
+    safe.database.init("services", {}) # @@ or just load with default
+    web_services_manifest = safe.database.cache.services
+    items = web_services_manifest.items()
 
     for command_name, url in items:
         if command_name in {"py", "wa"}:
@@ -1091,7 +1108,8 @@ def create_web_services():
 
         def create(command_name, url):
             if command_name in duxlot.commands:
-                print("Warning: Skipping duplicate: %s" % command_name)
+                # @@ Need a better services list
+                # print("Warning: Skipping duplicate: %s" % command_name)
                 return
 
             @duxlot.named(command_name)

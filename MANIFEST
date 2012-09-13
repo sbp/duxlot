@@ -10,10 +10,12 @@ duxlot.py
 functions.py
 irc.py
 prepare.py
+process.py
 script.py
 setup.py
 storage.py
 test.py
+data/test.json
 data/tests.txt
 data/timezones.json
 data/unicodedata.pickle

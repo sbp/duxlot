@@ -20,15 +20,15 @@ You may use **either** of these methods:
 
 *	Download the latest source:
 
-		`duxlot-0.9.10-1938.tar.bz2`_
+		`duxlot-0.9.13-1700.tar.bz2`_
 
-	Unpack it and enter ``duxlot-0.9.10-1938/``
+	Unpack it and enter ``duxlot-0.9.13-1700/``
 
 	**Optionally** install using::
 
 		python3 setup.py install
 
-.. _duxlot-0.9.10-1938.tar.bz2: http://pypi.python.org/packages/source/d/duxlot/duxlot-0.9.10-1938.tar.bz2
+.. _duxlot-0.9.13-1700.tar.bz2: http://pypi.python.org/packages/source/d/duxlot/duxlot-0.9.13-1700.tar.bz2
 
 *	Install from pypi_ using pip_::
 
@@ -89,7 +89,7 @@ Or by sending a SIGTERM signal_ to the PID manually.
 To find out what else the ``duxlot`` script can do, try these commands::
 
 	duxlot --help
-	duxlot --actions
+	duxlot --usage
 
 Options
 ---------------------
@@ -118,3 +118,10 @@ Pronunciation
 Duxlot is pronounced djuːksləʊ, or dʌksləʊ, in IPA_.
 
 .. _IPA: https://en.wikipedia.org/wiki/International_Phonetic_Alphabet
+
+Credits
+-------
+
+* David P. Kendal (@dpkendal), who helped me to debug
+* Smedley Butler (@epivalent), who helped me to maintain bug isostasy
+* Björn Höhrmann (@hoehrmann), who confused me into adding bugs

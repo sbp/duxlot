@@ -1,4 +1,3 @@
-Duplicate command: ubn
 .about 
 : Give information about a named bot command
 
@@ -8,8 +7,8 @@ Duplicate command: ubn
 .about ask
 : Ask another user an enquiry
 
-.about test-undocumented
-: That command has no documentation
+.about test-undocumented @@
+: Couldn't find that command
 
 .about test-undefined
 : Couldn't find that command
@@ -35,7 +34,7 @@ env: <[a-z, ]+>
 .bing reddit
 : http://www.reddit.com/
 
-.bing $(USER)vzmvnncvz
+.bing nz$(BOT)qqqvzmvnncvz
 : No results found
 
 .botsnack
@@ -66,13 +65,13 @@ env: <[a-z, ]+>
 : utf-8 (Content-Type)
 
 .error-test
-Python Error. <[^:]+>: standard.py:<[0-9]+> error_test(...) 1/0
+Python Error. <[^:]+>: general.py:<[0-9]+> error_test(...) 1/0
 
 .ety frog
 "<.{32,}>" - http://etymonline.com/index.php?term=frog
 
 .follow http://tinyurl.com/inamidst
-: http://inamidst.com/
+: <http://inamidst.com/|http://tinyurl.com/inamidst>
 
 .g reddit
 : http://www.reddit.com/
@@ -90,14 +89,15 @@ Python Error. <[^:]+>: standard.py:<[0-9]+> error_test(...) 1/0
 : 200, text/html, utf-8, <[0-9]+> bytes
 
 .help
-I am duxlot. You are not. WRITTEN IN PYTHON3™
+I am duxlot. Details: http://inamidst.com/duxlot/
 
 .img rongorongo
 : http://<.*>
 More: http://google.com/images?q=rongorongo
 
-.in 5s ê!
-: Will remind in 5 secs
+.in 9s ê!
+: Will remind in 9 secs
+WAIT 6
 : ê!
 
 .ip-time bbc.co.uk
@@ -116,7 +116,7 @@ More: http://google.com/images?q=rongorongo
 : <.*> a <.*>
 
 .maximum
-The maximum length text I can send here is <[0-9]{3}> bytes
+I don't know the text limit at the moment, sorry
 
 .metar EGLL
 : <.*, [0-9]+℃, [0-9]+mb, .* - EGLL [0-9:]{5}>
@@ -138,13 +138,18 @@ More: http://google.com/news?q=Apple%20site%3Areuters.com
 8
 
 .reload
-: That's an admin-only feature
+WAIT 3
+: Completed the reload. Took <[0-9.]{3,5}> seconds
+WAIT 3
 
 .search-trio reddit
 : [GBD] http://www.reddit.com/
 
 .seen $(BOT)
 : I'm right here
+
+.services
+: <[0-9]+> services available
 
 .snippets phenny
 : <.*>IRC<.*>
@@ -169,10 +174,6 @@ Perhaps up Pompeii: <.{16,}>
 
 .time
 <[0-9]{2}:[0-9]{2}:[0-9]{2}>
-
-.time-taken
-Smallest: <[0-9]+\.[0-9]+>
-Biggest: <[0-9]+\.[0-9]+>
 
 .timer
 : Time how long it takes to run another unparametric command
@@ -258,13 +259,16 @@ U+A700 MODIFIER LETTER CHINESE TONE YIN PING (꜀) [S]
 : No unicode character found
 
 .unix-date
-<[A-Za-z0-9: ]{19} [A-Z]{3,4} [0-9]{4}>
+<.* [0-9]{4}.*[0-9]{2}:[0-9]{2}:[0-9]{2} .*>
 
 .unixtime
 <[0-9]{10,}\.[0-9]+>
 
 .utc
 <[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}>
+
+.version
+duxlot <[0-9.-]+>, and python <[0-9.]+>
 
 .w frog
 frog — noun: 1. <.*>amphibian<.*>
@@ -277,4 +281,3 @@ start of->2012; Sunday, January 1, 2012; <.*>
 
 .yi
 : <(Yes, PARTAI!|Not yet\.\.\.)>
-

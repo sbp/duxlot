@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # Copyright 2012, Sean B. Palmer
 # Code at http://inamidst.com/duxlot/
 # Apache License 2.0
@@ -11,67 +9,96 @@ import sys
 
 import duxlot
 
-if "." in __name__:
-    from . import irc
-else:
-    import irc
+# Turn off buffering, like python3 -u
+# http://stackoverflow.com/questions/107705
 
-base = os.path.expanduser("~/.duxlot-console")
-manager = multiprocessing.Manager()
-database = irc.create_database_interface(base, manager)
+class Unbuffered:
+    def __init__(self, stream):
+        self.stream = stream # @@ __stream
 
-def create_console_env(text):
-    env = duxlot.Storage()
+    def write(self, data):
+        self.stream.write(data)
+        self.stream.flush()
 
-    if text.startswith("."):
-        text = text[1:]
-        if " " in text:
-            env.command, env.arg = text.split(" ", 1)
-        else:
-            env.command, env.arg = text, ""
+    def __getattr__(self, attr):
+        return getattr(self.stream, attr)
 
-    env.database = database
-    env.sender = "__console__"
-    env.nick = os.environ.get("USER")
-    env.limit = 512
+sys.stdout = Unbuffered(sys.stdout)
+sys.stderr = Unbuffered(sys.stderr)
 
-    def say(text):
-        print(text)
-    env.say = say
-    env.reply = say
+# @@ this is used in script.py too
+# move to duxlot.unbuffered()?
 
-    return env
+# This is only a class to work around Python Issue 15914:
+# http://bugs.python.org/issue15914
+# (Note: not using multiprocessing here currently, anyway)
+
+class Console(object):
+    def __init__(self):
+        # @@ Use the base resolution code in script.py
+        self.base = os.path.expanduser("~/.duxlot-console")
+        self.database = duxlot.database(self.base)
+
+    def create_console_env(self, text):
+        env = duxlot.Storage()
+    
+        if text.startswith("."):
+            text = text[1:]
+            if " " in text:
+                env.command, env.arg = text.split(" ", 1)
+            else:
+                env.command, env.arg = text, ""
+    
+        env.database = self.database
+        env.sender = "__console__"
+        env.nick = os.environ.get("USER")
+        env.limit = 512
+    
+        def say(text):
+            print(text)
+        env.say = say
+        env.reply = say
+    
+        return env
+    
+    def start(self):
+        print("Loading duxlot configuration...")
+
+        sys.path[:1] = [os.path.join(duxlot.path, "standard"), duxlot.path]
+    
+        import general    
+    
+        named = duxlot.commands.copy()
+        events = duxlot.events.copy()
+        for startup in duxlot.startups:
+            startup(self) # @@ safe in irc.py
+    
+        for event in events["high"]["1st"]:
+            event(self.create_console_env(""))
+    
+        print("Welcome to duxlot %s, console edition" % duxlot.version)
+        while True:
+            try: text = input("$ ")
+            except (EOFError, KeyboardInterrupt):
+                print("")
+                print("Quitting...")
+                break
+    
+            env = self.create_console_env(text)
+            if "command" in env:
+                if env.command in named:
+                    try: named[env.command](env)
+                    except Exception as err:
+                        print("%s: %s" % (err.__class__.__name__, err))
+                else:
+                    print("Unknown command: %s" % env.command)
+            else:
+                print("Commands start with \".\"")
 
 def main():
-    sys.path[:1] = [os.path.join(duxlot.path, "standard"), duxlot.path]
-
-    import general    
-
-    named = duxlot.commands.copy()
-    events = duxlot.events.copy()
-    for startup in duxlot.startups:
-        startup()
-
-    for event in events["high"]["1st"]:
-        event(create_console_env(""))
-
-    while True:
-        try: text = input("$ ")
-        except EOFError:
-            print("")
-            print("Quitting...")
-            break
-
-        env = create_console_env(text)
-        if "command" in env:
-            if env.command in named:
-                try: named[env.command](env)
-                except Exception as err:
-                    print("%s: %s" % (err.__class__.__name__, err))
-            else:
-                print("Unknown command: %s" % env.command)
-        else:
-            print("Commands start with \".\"")
+    console = Console()
+    console.start()
 
 if __name__ == "__main__":
+    # Run this using duxlot --console, though
     main()

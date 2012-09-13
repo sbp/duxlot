@@ -89,6 +89,9 @@ def stats(env):
 @command
 def tell(env):
     "Tell another user a message"
+    # Inspired by Monty, by Paul Mutton
+    # http://www.jibble.org/
+
     if not env.arg:
         return env.reply(tell.__doc__)
 

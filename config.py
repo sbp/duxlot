@@ -47,6 +47,7 @@ def aliases_put(alias, value):
     return True
 
 def aliases_read():
+    # @@
     try: f = open(aliases.path, encoding="utf-8")
     except (OSError, IOError):
         fail(error.ALIASES_UNREADABLE)
@@ -66,6 +67,7 @@ def aliases_remove(alias):
     aliases_write(data)
 
 def aliases_write(data):
+    # @@
     try: f = open(aliases.path, "w", encoding="utf-8")
     except (OSError, IOError):
         fail(error.ALIASES_UNWRITEABLE)
@@ -147,14 +149,10 @@ directory = storage.FrozenStorage({
 
 default = os.path.join(directory.path, "duxlot.json")
 
-# mv ~/.duxlot ~/duxlot.json
-# mkdir ~/.duxlot
-# mv ~/duxlot.json ~/.duxlot
-
 def reduceuser(path):
     home = os.path.expanduser("~/")
     if path.startswith(home):
-        path = "~/" + path[:len(home)]
+        path = "~/" + path[len(home):]
     return path
 
 error = storage.FrozenStorage({
@@ -169,21 +167,7 @@ to make sure you didn't accidentally create a directory there. Otherwise,
 please file a bug.
 
 (Error Name: ALIASES_NON_REGULAR)
-""" % reduceuser(aliases.path), # @@ ~/
-
-    "ALIASES_UNREADABLE": ##########
-"""
-Your aliases file cannot be read:
-
-    %s
-
-There is a file there, but duxlot is unable to access it. There is probably a
-permissions error with either the file itself, or one of its parent
-directories. Check to make sure that the user duxlot is running as has access
-to that file.
-
-(Error Name: ALIASES_UNREADABLE)
-""" % reduceuser(aliases.path), # @@ ~/
+""" % reduceuser(aliases.path),
 
     "ALIASES_NOT_CONFIG": ##########
 """
@@ -217,7 +201,7 @@ contents of the file are, and if the file isn't important, move it to another
 location.
 
 (Error Name: ALIASES_NOT_JSON)
-""" % reduceuser(aliases.path), # @@ ~/
+""" % reduceuser(aliases.path),
 
     "ALIASES_NOT_UTF8": ##########
 """
@@ -244,7 +228,21 @@ https://en.wikipedia.org/wiki/UTF-8
 https://en.wikipedia.org/wiki/Mojibake
 
 (Error Name: ALIASES_NOT_UTF8)
-""" % reduceuser(aliases.path), # @@ ~/
+""" % reduceuser(aliases.path),
+
+    "ALIASES_UNREADABLE": ##########
+"""
+Your aliases file cannot be read:
+
+    %s
+
+There is a file there, but duxlot is unable to access it. There is probably a
+permissions error with either the file itself, or one of its parent
+directories. Check to make sure that the user duxlot is running as has access
+to that file.
+
+(Error Name: ALIASES_UNREADABLE)
+""" % reduceuser(aliases.path),
 
     "ALIASES_UNWRITEABLE": ##########
 """
@@ -258,7 +256,7 @@ directories. Check to make sure that the user duxlot is running as has write
 access to that file.
 
 (Error Name: ALIASES_UNWRITEABLE)
-""" % reduceuser(aliases.path), # @@ ~/
+""" % reduceuser(aliases.path),
 
     "BASE_DIRECTORY_UNWRITEABLE": ##########
 """
@@ -294,12 +292,10 @@ The following path exists, but is not a regular file as it ought to be:
 
     %s
 
-This is a very strange error, so you're on your own debugging this one. Check
-to make sure you didn't accidentally create a directory there. Otherwise,
-please file a bug.
+@@
 
 (Error Name: CONFIG_NON_REGULAR)
-""" % reduceuser(aliases.path), # @@ ~/
+""", # args: 1
 
     "CONFIG_NOT_JSON": ##########
 """
@@ -432,7 +428,7 @@ def exists(path):
         return True
 
     if os.path.exists(path):
-        fail(error.CONFIG_NON_REGULAR)
+        fail(error.CONFIG_NON_REGULAR % path)
 
     return False
 
@@ -491,6 +487,9 @@ options = {
 
     "debug": (False, {bool}, False, # IRC
         "Whether to catch and display python exceptions in commands"),
+
+    "flood": (False, {bool}, False, # IRC
+        "Bypass the built in flood protection"),
 
     "nick": (random_nick(), {str}, True, # IRC, Core, General
         "Nick for the bot to use for itself"),
@@ -608,6 +607,7 @@ def write(path, data, pretty=False):
                 del data[name]
         del data["__options__"]
 
+    # @@
     try: f = open(path, "w", encoding="utf-8")
     except (OSError, IOError):
         fail(error.CONFIG_UNWRITEABLE % reduceuser(path))

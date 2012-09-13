@@ -32,9 +32,9 @@ events = {"high": {}, "medium": {}, "low": {}}
 def event(name, concurrent=False):
     "Decorate a function to match IRC events"
     def decorate(function):
+        function.concurrent = concurrent
         events["high"].setdefault(name, [])
         events["high"][name].append(function)
-        function.concurrent = concurrent
         return function
     return decorate
 
@@ -47,17 +47,18 @@ def startup(function):
     startups.append(function)
     return function
 
+builders = []
+
+def builder(function):
+    "Decorate a function to augment an enviroment"
+    builders.append(function)
+    return function
+
 def clear():
     "Clear registered IRC commands and events"
     commands.clear()
-    events.clear()
-    events["high"] = {}
-    events["medium"] = {}
-    events["low"] = {}
+    events["high"].clear()
+    events["medium"].clear()
+    events["low"].clear()
     del startups[:]
-
-# def backup():
-#     return commands.copy(), events.copy(), startups[:]
-
-# def restore(t):
-#     commands, events, startups = t
+    del builders[:]

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# @@ -Ou
 
 # Copyright 2012, Sean B. Palmer
 # Code at http://inamidst.com/duxlot/
@@ -19,8 +18,10 @@ import duxlot
 # Save PEP 3122!
 if "." in __name__:
     from . import api
+    from . import process
 else:
     import api
+    import process
 
 def modules_in_directory(directory):
     import glob
@@ -30,129 +31,95 @@ def modules_in_directory(directory):
         names.append(name[:-3])
     return names
 
-# @@ a more efficient message parser
-# @@ a more efficient environment builder
-# @@ a naïve timer for other commands
-# @@ separate namespace for command chaining state
-# @@ note where the lock is used, and the types of usage
-# @@ periodic scheduling
-# @@ ..commands for web services, or .regular and .services other
-# @@ last n seconds of events, event list
-# @@ reload config. nick/channels/prefix might change, etc.
-# @@ make F008 work, and the character itself
-# @@ make it clear when a child process goes boom
-# @@ ignore list
-# @@ show/delete my messages
-# @@ find out the flood limits
-# @@ recovering from process errors
-# @@ make tasks queue joinable
+debug = duxlot.output.write
+
+def task(method):
+    name = method.__name__.rsplit("_", 1).pop()
+    task.methods[name] = method
+    return method
+task.methods = {}
 
 class Client(object):
-    def __init__(self, options_filename, options_base, options_data):
-        try: sending = multiprocessing.JoinableQueue()
-        except OSError as err:
-            print("Oh dear, your system might not allow POSIX Semaphores")
-            print("See http://stackoverflow.com/questions/2009278 to fix")
-            __import__("sys").exit(1)
+    def __init__(self, name, base, data):
+        self.check_semaphores()
 
-        manager = multiprocessing.Manager()
-        lock = multiprocessing.RLock()
-
-        self.options_filename = options_filename
-        self.base = options_base
-        db_base = options_data["database"]
-        db_base = db_base.replace("$(BASE)", self.base)
-        db_base = duxlot.config.path(db_base)
-
-        # messages: received -> messages
-        # sending: * -> send
-        # event_messages: messages -> events
-
-        # tasks: * -> main
-        # schedule: * -> schedule
-
-        tasks = multiprocessing.Queue()
-
-        def log(*text):
-            tasks.put(("log",) + text)
-
-        # perhaps split into primitive stuff and user friendly stuff
-        # private_safe, and public_safe
-        self.safe = duxlot.FrozenStorage({
-            "messages": multiprocessing.JoinableQueue(),
-            "sending": sending,
-            "event_messages": multiprocessing.JoinableQueue(),
-            "schedule": multiprocessing.JoinableQueue(),
-            "tasks": tasks,
-            "manager": manager,
-            "data": manager.dict(),
-            "lock": lock,
-            "options": manager.dict(options_data),
-            "send_message": create_send_message(sending, self.perform_log),
-            "database": create_database_interface(db_base, manager),
-            "log": log
+        self.config = duxlot.FrozenStorage({
+            "name": name,
+            "base": base,
+            "data": data
         })
 
-        def terminate(signum, frame):
-            # print(frame)
-            self.safe.send_message("QUIT", "? made me do it") # @@
-            self.perform_quit()
-        signal.signal(signal.SIGTERM, terminate)
-        signal.signal(signal.SIGINT, terminate)
+        self.processes = process.Processes(self.create_socket)
 
-        self.inactive = {
-            "process:schedule": multiprocessing.Event(),
-            "process:events": multiprocessing.Event(),
-            "process:messages": multiprocessing.Event(),
-            "process:send": multiprocessing.Event()
-        }
-
-        self.queue_processes = {
-            "process:schedule": self.safe.schedule,
-            "process:events": self.safe.event_messages,
-            "process:messages": self.safe.messages,
-            "process:send": self.safe.sending
-        }
-
-        self.all_process_names = (
-            "process:command",
-            "process:schedule",
-            "process:events",
-            "process:messages",
-            "process:send",
-            "process:receive"
-        )
-
-        self.queue_process_names = self.all_process_names[1:-1]
+        self.populate_safe()
+        self.handle_signals()
 
         self.standard_directory = os.path.join(duxlot.path, "standard")
 
-        self.import_modules()
-        self.setup_commands()
+        self.load()
+        self.setup()
 
         self.create_socket()
-        self.start_processes()
-        self.handle_perform_loop()
+        self.start()
+        self.tasks()
 
-    def handle_perform_loop(self):
-        handlers = {
-            "quit": self.perform_quit,
-            "reload": self.perform_reload,
-            "restart": self.perform_restart,
-            "processes": self.perform_processes,
-            "log": self.perform_log
-        }
+    def check_semaphores(self):
+        try: multiprocessing.Semaphore()
+        except OSError as err:
+            debug("Oh dear, your system might not allow POSIX Semaphores")
+            debug("See http://stackoverflow.com/questions/2009278 to fix")
+            sys.exit(1)
 
-        while True:
-            task = self.safe.tasks.get()
-            task_name, arguments = task[0], task[1:]
+    def populate_safe(self):
+        self.safe = safe = duxlot.Storage()
 
-            if task_name in handlers:
-                try: handlers[task_name](*arguments)
-                except Exception as err:
-                    self.perform_log("Task Error: %s" % err)
+        safe.manager = multiprocessing.Manager()
+        safe.lock = multiprocessing.RLock()
 
-    def import_modules(self):
+        safe.tasks = self.processes.queue
+        safe.sending = self.processes["send"].queue
+        safe.messages = self.processes["messages"].queue
+        safe.event_messages = self.processes["events"].queue
+        safe.schedule = self.processes["schedule"].queue
+
+        safe.data = safe.manager.dict()
+        safe.options = safe.manager.dict(self.config.data)
+        safe.commands = process.Commands(safe.manager, safe.schedule.put)
+
+        db_base = self.config.data["database"]
+        db_base = db_base.replace("$(BASE)", self.config.base)
+        db_base = duxlot.config.path(db_base)
+
+        safe.database = duxlot.database(db_base, safe.manager.Namespace())
+        safe.send_message = create_send_message(safe.sending, debug)
+
+        def log(*text):
+            safe.tasks.put(("log",) + text)
+        safe.log = log
+
+    def handle_signals(self):
+        def terminate(signum, frame):
+            user = os.environ.get("USER", "signal")
+            message = "%s made me do it (signal %s)" % (user, signum)
+            self.safe.send_message("QUIT", message)
+
+            # Ask nicely
+            self.processes.stop()
+
+            # A little less nicely...
+            try: self.safe.commands.collect(0)
+            except: ...
+
+            # SHOUT!
+            for process in multiprocessing.active_children():
+                try: process.terminate()
+                except: ...
+
+            sys.exit()
+        signal.signal(signal.SIGTERM, terminate)
+        signal.signal(signal.SIGINT, terminate)
+
+    def load(self):
         import importlib
 
         self.modules = {}
@@ -167,16 +134,24 @@ class Client(object):
                 if standard != {"*"}:
                     module_names = standard & set(module_names)
 
+            imported_names = []
             for module_name in module_names:
+                if module_name in sys.modules:
+                    debug("Warning: Skipping duplicate: %s" % module_name)
+                    continue
                 identifier = (module_name, directory)
 
                 sys.path[:0] = [directory, duxlot.path]
                 self.modules[identifier] = importlib.import_module(module_name)
-                print("Imported", module_name, "from", directory)
+                imported_names.append(module_name)
                 sys.path[:2] = []
 
-    def reload_modules(self, sender=None, nick=None):
+            udir = duxlot.config.reduceuser(directory)
+            debug("Imported", ", ".join(imported_names), "from", udir)
+
+    def reload(self, sender=None, nick=None):
         import imp
+        # import importlib
 
         def error(msg):
             if sender and nick:
@@ -187,10 +162,12 @@ class Client(object):
         for (module_name, directory), module in self.modules.items():
             sys.path[:0] = [directory, duxlot.path]
 
+            # info = (module_name,) + imp.find_module(module_name)
+            # try: reloaded = imp.load_module(*info)
             try: reloaded = imp.reload(module)
             except Exception as err:
                 message = "%s: %s" % (err.__class__.__name__, err)
-                self.perform_log(message)
+                debug(message)
                 error(message)
 
                 return False
@@ -201,168 +178,215 @@ class Client(object):
 
         return True
 
-    def do_actual_reload(self, sender=None, nick=None):
-        with self.safe.lock:
-            self.perform_log("Reloading...")
-            # backup = duxlot.backup()
-            success = self.reload_modules(sender, nick)
-            if success:
-                self.setup_commands()
-            # else:
-            #     duxlot.restore(backup)
-            self.perform_log("Reloaded")
-
-    def perform_reload(self, sender=None, nick=None):
-        self.complete_queue_processes()
-
-        self.do_actual_reload(sender, nick)
-
-        self.start_queue_processes()
-        if sender and nick:
-            self.safe.send_message("PRIVMSG", sender, nick + ": Reload complete")
-
-    def perform_restart(self):
-        try: self.socket.shutdown(socket.SHUT_RDWR)
-        except socket.error:
-            ...
-        # self.socket.detach()
-        self.complete_queue_processes()
-        if not self.processes_completed_cleanly():
-            self.terminate_all_processes()
-
-        self.do_actual_reload()
-
-        self.create_socket()
-        self.start_processes()
-
-    def setup_commands(self):
+    def setup(self):
         # @@ recording sources of commands
-        self.named = duxlot.commands.copy()
-        self.events = duxlot.events.copy()
+        self.safe.named = duxlot.commands.copy()
+        self.safe.events = duxlot.events.copy()
         for startup in duxlot.startups:
-            startup()
+            startup(self.safe)
+
+    def start(self):
+        self.processes["receive"].action(process_receive, self.safe)
+        self.processes["send"].action(process_send, self.safe)
+        self.processes["messages"].action(process_messages, self.safe)
+        self.processes["events"].action(process_events, self.safe)
+        self.processes["schedule"].action(process_schedule, self.safe)
+
+        self.processes.start()
 
     def create_socket(self):
-        self.socket = socket.socket(socket.AF_INET, socket.TCP_NODELAY)
+        sock = socket.socket(socket.AF_INET, socket.TCP_NODELAY)
 
         if self.safe.options["ssl"] is True:
             import ssl
-    
-            print("Warning: Using SSL, but not validating the cert!")
-            self.socket = ssl.wrap_socket(
-                self.socket,
+            debug("Warning: Using SSL, but not validating the cert!")
+            sock = ssl.wrap_socket(
+                sock,
                 server_side=False,
                 cert_reqs=ssl.CERT_NONE # @@ or CERT_REQUIRED
             )
 
-        self.socket.connect((self.safe.options["server"], self.safe.options["port"]))
+        address = (self.safe.options["server"], self.safe.options["port"])
+        debug("Connecting to %s:%s" % address)
+        try: sock.connect(address)
+        except socket.error:
+            debug("Connection refused to %s:%s" % address)
 
-    def start_processes(self):
-        # process:events could be pooled
-        self.start_queue_processes()
-        process(process_receive, (self.safe, self.socket.makefile))
+            # This sleep value is an irreducible minimum! It prevents crazy.
+            # You might think that making this lower would be a good thing;
+            # that would turn out not to be the case.
+            time.sleep(3)
+        return sock
 
-    def start_queue_processes(self):
-        process(process_schedule,
-            (self.inactive["process:schedule"], self.safe))
-        process(process_events,
-            (self.inactive["process:events"], self.safe, self.events))
-        process(process_messages,
-            (self.inactive["process:messages"], self.safe, self.named))
-        process(process_send,
-            (self.inactive["process:send"], self.safe, self.socket.makefile))
+    def tasks(self):
+        self.main = duxlot.Storage()
 
-    def perform_log(self, *text):
-        with self.safe.lock:
-            print(*text) # @@ or write to a file, etc.
+        for name, method in task.methods.items():
+            setattr(self.main, name, method)
 
-    def active_processes(self, name=None):
-        processes = {}
-        for p in multiprocessing.active_children():
-            if p in self.all_process_names:
-                processes.setdefault(p.name, []).append(p)
-
-        if name in processes:
-            return processes[name]
-        return processes
-
-    def active_process(self, name):
-        processes = self.active_processes()
-        return name in processes
-
-    def terminate_process(self, name, wait=None):
-        processes = self.active_processes()
-        if (name in processes) and (name in self.all_process_names):
-            for process in processes[name]:
-                self.perform_log("Sending SIGTERM to %s" % name)
-                process.terminate()
-                if wait:
-                    time.sleep(wait)
-
-    def terminate_all_processes(self):
-        for process_name in self.all_process_names:
-            self.terminate_process(process_name)
-
-    # @@ wait / timeout
-    def complete_processes(self, names, join=True):
-        for name in names:
-            if name in self.queue_process_names:
-                queue = self.queue_processes[name]
-                queue.put("StopIteration")
-                self.perform_log("Send StopIteration to %s" % name)
-
-            elif name == "process:receive":
-                self.perform_log("Not implemented")
-
-        for name in names:
-            # @@ process:command instances won't have an event
-            if (name in self.queue_processes) and join:
-                event = self.inactive[name]
-                self.perform_log("Waiting up to 5secs for %s to call inactive.set" % name)
-                event.wait(timeout=5)
-
-    def complete_queue_processes(self):
-        self.complete_processes(self.queue_process_names)
-
-    def processes_completed_cleanly(self, poll=0.2, timeout=2):
-        start = time.time()
         while True:
-            active = self.active_processes()
-            if not active:
-                break
-            if time.time() > (start + timeout):
-                for item in active.items():
-                    self.perform_log("STILL RUNNING:", item)
-                return False
-            time.sleep(poll)
-        return True
+            parameters = self.safe.tasks.get()
+            name, arguments = parameters[0], parameters[1:]
+            debug("Got task:", name, arguments)
 
-    def perform_quit(self):
-        import sys
-        # with self.safe.lock:
-        self.complete_queue_processes()
-        if not self.processes_completed_cleanly():
-            self.terminate_all_processes()
+            if name in self.main:
+                try: getattr(self.main, name)(self, *arguments)
+                except Exception as err:
+                    debug("Task Error:", name, err)
+
+    @task
+    def main_log(self, *text):
+        # @@ debug(*text)
+        duxlot.output.write(*text)
+
+    @task
+    def main_reload(self, sender=None, nick=None):
+        before = time.time()
+
+        self.processes["events"].stop(finish=True)
+        self.processes["messages"].stop(finish=True)
+
+        with self.safe.lock:
+            debug("Reloading...")
+            success = self.reload(sender, nick)
+            if success:
+                self.setup()
+            debug("Reloaded")
+
+        self.processes["messages"].action(process_messages, self.safe)
+        self.processes["events"].action(process_events, self.safe)
+
+        self.processes["messages"].start()
+        self.processes["events"].start()
+
+        duration = time.time() - before
+
+        if sender and nick:
+            if success:
+                msg = "Completed the reload. Took %s seconds"
+            else:
+                msg = "The reload failed. Took %s seconds"
+            msg = msg % round(duration, 3)
+            self.safe.send_message("PRIVMSG", sender, nick + ": " + msg)
+
+    @task
+    def main_restart(self):
+        # @@ Send QUIT
+        self.processes.stop()
+        debug("Stopped processes...")
+        debug(" ")
+
+        elapsed = 0
+        while self.safe.commands.collectable(0):
+            time.sleep(1)
+            elapsed += 1
+            if elapsed > 6:
+                self.main.collect()
+                self.main.restart() # @@ loops
+
+        self.processes.empty()
+        if not self.safe.options["flood"]:
+            time.sleep(6)
+
+        debug("Starting processes...")
+        self.processes.start()
+
+    # @@
+    # @task
+    def main_reconnect(self):
+        self.processes["receive"].stop(finish=True)
+        self.processes["send"].stop(finish=True)
+        debug("Disconnected")
+        debug("")
+
+        if not self.safe.options["flood"]:
+            time.sleep(6)
+
+        self.processes.empty()
+
+        debug("Reconnecting...")
+        self.processes["receive"].action(process_receive, self.safe)
+        self.processes["send"].action(process_send, self.safe)
+
+        self.processes["receive"].start()
+        self.processes["send"].start()
+
+    @task
+    def main_quit(self, nick=None):
+        if nick is not None:
+            self.safe.send_message("QUIT", "%s made me do it" % nick)
+        else:
+            self.safe.send_message("QUIT")
+
+        self.processes.stop()
         sys.exit(0)
 
-    def perform_processes(self, sender=None, nick=None):
+    @task
+    def main_processes(self, sender=None, nick=None):
         process_names = []
+
         for p in multiprocessing.active_children():
             process_names.append(p.name)
+
         if sender and nick:
             number = len(process_names)
             names = ", ".join(sorted(process_names))
             msg = "%s processes are running (%s)" % (number, names)
             self.safe.send_message("PRIVMSG", sender, nick + ": " + msg)
 
+    @task
+    def main_collect(self):
+        collectable = self.safe.commands.collectable(60)
+
+        if collectable:
+            debug("Pausing processes")
+            self.processes.pause()
+
+            debug("Collecting commands")
+            collected = self.safe.commands.collect(50)
+            debug("Collected", collected, "commands")
+
+            debug("Flushing queues")
+            # self.processes.flush()
+
+            debug("Setting new queues")
+            self.safe.sending = self.processes["send"].queue
+            # self.safe.messages = self.processes["messages"].queue
+            # self.safe.event_messages = self.processes["events"].queue
+            self.safe.schedule = self.processes["schedule"].queue
+
+            debug("Setting new actions")
+            self.processes["send"].action(process_send, self.safe)
+            # self.processes["messages"].action(process_messages, self.safe)
+            # self.processes["events"].action(process_events, self.safe)
+            self.processes["schedule"].action(process_schedule, self.safe)
+
+            debug("Resuming...")
+            self.processes.resume()
+            debug("Resumed")
+
+    @task
+    def main_ping(self):
+        self.safe.send_message("PING", self.safe.options["nick"])
+
+    @task
+    def main_ponged(self, pinged):
+        ponged = self.safe.data.get("ponged", 0)
+        if ponged < pinged:
+            self.main.restart()
+
+    @task
+    def main_msg(self, recipient, text):
+        self.safe.send_message("PRIVMSG", recipient, text)
 
 ### Processes ###
 
 # (a) process:receive
-def process_receive(safe, makefile):
+def process_receive(safe):
+    debug("START! process_receive")
     import ssl
 
-    def receive(safe, sockfile):
+    def receive_loop(safe, sockfile):
         count = 0
         for octets in sockfile:
             o = api.irc.parse_message(octets=octets)
@@ -371,69 +395,82 @@ def process_receive(safe, makefile):
             safe.messages.put(o())
 
             # @@ remove this?
-            safe.log("RECV:", octets)
+            debug("RECV:", octets)
 
-    with makefile("rb") as sockfile:
-        try: receive(safe, sockfile)
-        except (ssl.SSLError, socket.error):
-            safe.tasks.put("restart")
-        # except (IOError, EOFError):
-        #     ...
-    safe.log("DONE! process:receive")
+    with safe.socket.makefile("rb") as sockfile:
+        try: receive_loop(safe, sockfile)
+        except (IOError, EOFError, socket.error, ssl.SSLError):
+            debug("Got socket or SSL error")
+            safe.tasks.put(("restart",))
+        else:
+            debug("Got regular disco")
+            safe.tasks.put(("restart",)) # @@
+
+    debug("DONE! process:receive")
 
 # (b) process:send
-def process_send(inactive, safe, makefile):
-    inactive.clear()
-    sent = 0
-    with makefile("wb") as sockfile:
-        while True:
-            octets = safe.sending.get()
-            if octets == "StopIteration":
-                break
+def process_send(safe):
+    import ssl
 
-            octets = octets.replace(b"\r", b"")
-            octets = octets.replace(b"\n", b"")
+    debug("START! process_send")
 
-            now = time.time()
-            if sent > (now - 1):
-                time.sleep(0.5)
-            sent = now
+    def send_loop():
+        sent = 0
 
-            if len(octets) > 510:
-                octets = octets[:510]
+        with safe.socket.makefile("wb") as sockfile:
+            while True:
+                octets = safe.sending.get()
+                if octets == "StopIteration":
+                    break
+    
+                octets = octets.replace(b"\r", b"")
+                octets = octets.replace(b"\n", b"")
+    
+                if not safe.options["flood"]:
+                    now = time.time()
+                    if sent > (now - 1):
+                        time.sleep(0.5)
+                    sent = now
+    
+                if len(octets) > 510:
+                    octets = octets[:510]
+    
+                sockfile.write(octets + b"\r\n")
+                sockfile.flush()
+    
+                # @@ remove this?
+                debug("SENT:", octets + b"\r\n")
+                safe.sending.task_done()
 
-            sockfile.write(octets + b"\r\n")
-            sockfile.flush()
+    try: send_loop()
+    except (IOError, EOFError, socket.error, ssl.SSLError):
+        ...
 
-            # @@ remove this?
-            safe.log("SENT:", octets + b"\r\n")
-            safe.sending.task_done()
     safe.sending.task_done()
-    safe.log("DONE! process:send")
-    inactive.set()
+    debug("DONE! process:send")
 
 # (c) process:messages
-def process_messages(inactive, safe, named):
-    inactive.clear()
+def process_messages(safe):
+    debug("START! process_messages")
     safe.database.cache.usage = safe.database.load("usage") or {}
     while True:
+        # debug("Waiting for message")
         message = safe.messages.get()
+        # debug("Got message", message)
         if message == "StopIteration":
             break
 
         if message["command"] == "PRIVMSG":
-            handle_named(safe, named, message)
+            handle_named(safe, safe.named, message)
         safe.event_messages.put(message)
         safe.messages.task_done()
 
     safe.messages.task_done()
-    safe.log("DONE! process:messages")
-    inactive.set()
+    debug("DONE! process:messages")
 
 # (d) process:events
-def process_events(inactive, safe, events):
-    inactive.clear()
-
+def process_events(safe):
+    debug("START! process_events")
     while True:
         message = safe.event_messages.get()
         if message == "StopIteration":
@@ -443,119 +480,166 @@ def process_events(inactive, safe, events):
         if message["count"] == 1:
             commands = ["1st"] + commands
 
+        env = create_irc_env(safe, message)
         for priority in ["high", "medium", "low"]:
             for command in commands:
-                for function in events[priority].get(command, []):
-                    def process_command():
-                        # Must be inside, otherwise it may be GCed
-                        env = create_irc_env(safe, message)
+                for function in safe.events[priority].get(command, []):
+                    def process_command(env):
                         try: function(env)
                         except Exception as err:
-                            safe.log("Error:", str(err))
+                            debug("Error:", str(err))
 
                     if not hasattr(function, "concurrent"):
-                        process_command()
+                        process_command(env)
+                    elif function.concurrent:
+                        safe.commands.spawn(process_command, env)
                     else:
-                        process(process_command, ())
+                        process_command(env)
 
         safe.event_messages.task_done()
     safe.event_messages.task_done()
-    safe.log("DONE! process:events")
-    inactive.set()
+    debug("DONE! process:events")
 
 # (e) process:schedule
-def process_schedule(inactive, safe):
-    inactive.clear()
+def process_schedule(safe):
+    debug("START! process_schedule")
 
-    import time
     import heapq
     import queue
+    import time
 
-    heap = safe.database.load("schedule") or []
-    heapq.heapify(heap)
+    database = safe.database
+    # @@ safe.queue is not reliable!
+    receive = safe.schedule.get
+    task = safe.tasks.put
 
-    safe.data["pinged"] = time.time()
-    safe.data["ponged"] = safe.data["pinged"]
+    duration = 1/3
+    # @@ init won't work here, doesn't return anything
+    # could do an init and then a load...
+    schedule = database.load("schedule") or []
+    heapq.heapify(schedule)
 
-    # while tick():
-    #    ...
+    def periodic(period):
+        def decorate(function):
+            name = function.__name__
 
-    safe.data["biggest_time"] = 0
-    safe.data["smallest_time"] = 100000
-    average_time = 0
+            periodic.functions[name] = function
+            periodic.period[name] = period
+            periodic.called[name] = 0
+            periodic.stamp[name] = time.time()
 
-    while True:
-        time_at_start = time.time()
-        item = None
-        changed = False
+            return function
+        return decorate
+    periodic.functions = {}
+    periodic.period = {}
+    periodic.called = {}
+    periodic.stamp = {}
+
+    @periodic(300)
+    def ping(current):
+        task(("ping",))
+        periodic.period["ponged"] = 60
+
+    @periodic(None)
+    def ponged(current):
+        if periodic.called.get("ping"):
+            pinged = periodic.stamp["ping"]
+
+            # @@ periodic.period["ponged"] - 10?
+            if current > (pinged + 50):
+                task(("ponged", pinged))
+                periodic.period["ponged"] = None
+
+    @periodic(180)
+    def dump(current):
+        # @@ dump only if it's changed
+        database.dump("schedule", schedule)
+
+    @periodic(30)
+    def collect(current):
+        # @@ this means processes can run for about 90 seconds
+        task(("collect",))
+
+    def tick():
+        nonlocal receive
+        nonlocal schedule
+
+        def elapsed():
+            return time.time() - elapsed.start
+        elapsed.start = time.time()
+
+        # Spend 2/3 the duration handling the queue
         while True:
-            try: item = safe.schedule.get_nowait()
+            remaining = (2/3 * duration) - elapsed()
+            if remaining <= 0:
+                break
+
+            try: event = receive(timeout=remaining)
             except queue.Empty:
                 break
-
-            if item == "StopIteration":
-                break
-
-            if changed is False:
-                changed = True
-            heapq.heappush(heap, item)
-
-        if item == "StopIteration":
-            break
-
-        if changed:
-            safe.database.dump("schedule", heap)
-
-        now = time.time()
-        while True:
-            if heap:
-                t, recipient, nick, text = heapq.heappop(heap)
             else:
-                break
+                if event == "StopIteration":
+                    return False
 
-            if t > now:
-                heapq.heappush(heap, (t, recipient, nick, text))
-                break
-            else:
-                if text:
-                    safe.send_message("PRIVMSG", recipient, nick + ": " + text)
+                if not isinstance(event, tuple):
+                    debug("Not a tuple:", event)
+                    continue
+                if len(event) < 2:
+                    continue
+                if not (isinstance(event[0], int) or isinstance(event[0], float)):
+                    continue
+
+                if event[0] < elapsed.start:
+                    # @@ dump
+                    # @@ if event[1] == "stop", then quit
+                    task(tuple(event[1:]))
                 else:
-                    safe.send_message("PRIVMSG", recipient, nick + "!")
-                safe.database.dump("schedule", heap)
+                    heapq.heappush(schedule, event)
 
-        if now > (safe.data["pinged"] + 300):
-            safe.send_message("PING", safe.options["nick"])
-            safe.data["pinged"] = now
+        # Handle the schedule
+        current = time.time()
 
-        if now > (safe.data["pinged"] + 60):
-            if safe.data["ponged"] < (safe.data["pinged"] - 60):
-                safe.tasks.put("restart")
-                # break - would probably cause a dual process complete call
-                # @@ only with task_done() though?
+        while True:
+            if not schedule:
+                break
 
-        # http://www.wolframalpha.com/input/?i=1%2F3+-+1%2F5
-        time_taken = time.time() - time_at_start
-        if time_taken > safe.data["biggest_time"]:
-            safe.data["biggest_time"] = time_taken
-        if time_taken < safe.data["smallest_time"]:
-            safe.data["smallest_time"] = time_taken
+            event = heapq.heappop(schedule)
+            if event[0] > current:
+                heapq.heappush(schedule, event)
+                break
 
-        # 09:50 <sbp> ^time-taken
-        # 09:50 <duxlott> Smallest: 0.0003108978271484375
-        # 09:50 <duxlott> Biggest: 0.0021529197692871094
+            # @@ dump
+            # @@ if event[1] == "stop", then quit
+            task(tuple(event[1:]))
 
-        tick_duration = 1/3
-        min_sleep = 1/5
-        delay = tick_duration - (time.time() - now)
-        delay = min_sleep if (delay < min_sleep) else delay
-        time.sleep(delay)
-        # .1 - 0.25% cpu, .02 - 1% cpu, .01 - 2% cpu, .001 - 13% cpu
-        if item:
-            safe.schedule.task_done()
-    safe.schedule.task_done()
-    safe.log("DONE! process:schedule")
-    inactive.set()
+        # Handle periodic functions
+        current = time.time()
 
+        for name in periodic.functions:
+            period = periodic.period[name]
+            if not period:
+                continue
+            stamp = periodic.stamp[name]
+
+            if current >= (stamp + period):
+                debug("PERIODIC:", name)
+                periodic.functions[name](current)
+                periodic.called[name] += 1
+                periodic.stamp[name] = time.time()
+
+        # Sleep for the rest of the duration
+        remaining = duration - elapsed()
+        if remaining > 0:
+            time.sleep(remaining)
+
+        return True
+
+    while tick():
+        ...
+
+    database.dump("schedule", schedule)
+
+    debug("DONE! process:schedule")
 
 ### Process anciliaries ###
 
@@ -570,20 +654,20 @@ def handle_named(safe, named, message):
                     usage.setdefault(cmd, 0)
                     usage[cmd] += 1
 
-            def process_command():
+            def process_command(env):
                 # @@ multiprocessing.managers.RemoteError
-                env = create_irc_env(safe, message) # @@!
+                # env = create_irc_env(safe, message) # @@!
                 # @@ pre-command
                 if not safe.options["debug"]:
                     try: named[env.command](env)
                     # except duxlot.Error as err:
-                    #     irc.say("API Error: %s" % err) # @@!
+                    #     env.say("API Error: %s" % err) # @@!
                     except Exception as err:
                         import os.path, traceback
                         item = list(traceback.extract_tb(err.__traceback__, limit=2).pop())
                         item[0] = os.path.basename(item[0])
                         where = "%s:%s %s(...) %s" % tuple(item)
-                        irc.say("Python Error. %s: %s" % (err, where))
+                        env.say("Python Error. %s: %s" % (err, where))
                 else:
                     named[env.command](env)
                 # @@ post-command
@@ -593,19 +677,8 @@ def handle_named(safe, named, message):
             #    time.sleep(0.5)
             # if > timeout, complain
 
-            process(process_command, tuple())
-    safe.log("Quitting handle_named")
-
-# used by create_input
-def administrators(options):
-    permitted = set()
-    owner = options["owner"]
-    if owner:
-        permitted.add(owner)
-    admins = options["admins"]
-    if admins:
-        set.update(admins)
-    return permitted
+            safe.commands.spawn(process_command, env)
+    debug("Quitting handle_named")
 
 def create_irc_env(safe, message):
     env = duxlot.Storage()
@@ -615,7 +688,7 @@ def create_irc_env(safe, message):
     if "prefix" in message:
         env.nick = message["prefix"]["nick"]
 
-    if message["command"] == "PRIVMSG":
+    if env.event == "PRIVMSG":
         env.sender = message["parameters"][0]
         env.text = message["parameters"][1]
         if "address" in safe.data:
@@ -640,32 +713,11 @@ def create_irc_env(safe, message):
         if env.private:
             env.sender = env.nick
 
-        # this should be in a separate admin augmentation
-        # only to be added if the admin module is loaded
-        env.owner = env.nick == safe.options["owner"]
-        env.admin = env.nick in administrators(safe.options) # @@!
-        env.adminchan = env.sender in safe.options["adminchans"]
-
-        def credentials(person, place):
-            person_okay = {
-                "owner": env.owner,
-                "admin": env.owner or env.admin
-            #   "anyone": True # @@ for anyone + adminchan
-            }.get(person, False)
-    
-            place_okay = {
-                "anywhere": True,
-                "adminchan": env.adminchan or env.private,
-                "private": env.private
-            }.get(place, False)
-
-            return person_okay and place_okay
-        env.credentials = credentials
-
     env.data = safe.data
     env.options = safe.options
     env.lock = safe.lock
-    env.task = safe.tasks.put
+    # @@ schedule wrapper?
+    # env.task = safe.tasks.put
     env.database = safe.database
     env.schedule = safe.schedule.put
     env.sent = safe.sending.join
@@ -690,6 +742,10 @@ def create_irc_env(safe, message):
         safe.send_message("PRIVMSG", recipient, text)
     env.msg = msg
 
+    # @@ this shouldn't really be here...
+    for builder in duxlot.builders:
+        env = builder(env)
+
     return env
 
 # process-safe
@@ -707,107 +763,29 @@ def create_send_message(sending, log):
         sending.put(" ".join(arguments).encode("utf-8", "replace"))
     return send_message
 
-def process(target, args):
-    name = target.__name__.replace("_", ":")
-
-    def target2(*args, **kargs):
-        signal.signal(signal.SIGINT, signal.SIG_IGN) # @@ aargh!
-        target(*args, **kargs)
-
-    kargs = {"target": target2, "args": args, "name": name}
-    p = multiprocessing.Process(**kargs)
-    p.start()
-    return p
-
-def create_database_interface(base, manager):
-    import os.path
-    import pickle
-    import json
-    import contextlib
-
-    cache = manager.Namespace()
-    lock = multiprocessing.RLock()
-
-    base = os.path.expanduser(base)
-    dotdb = base + ".%s.db"
-    dotjson = base + ".%s.json"
-
-    def check(name):
-        if not name.isalpha():
-            raise ValueError(name)
-
-    def do_load(name):
-        filename = dotdb % name
-        if os.path.isfile(filename):
-            with open(filename, "rb") as f:
-                return pickle.load(f)
-
-    def do_dump(name, data):
-        with open(dotdb % name, "wb") as f:
-            pickle.dump(data, f)
-
-    # @@ init, copies to cache returns a fallback?
-    # e.g. irc.safe.database.init("name", [])
-
-    def init(name, default=None):
-        data = do_load(name) or default
-        setattr(cache, name, data)
-        if data is default:
-            do_dump(name, data)
-
-    def load(name):
-        check(name)
-        with lock:
-            return do_load(name)
-
-    def dump(name, data):
-        check(name)
-        with lock:
-            do_dump(name, data)
-
-    @contextlib.contextmanager
-    def context(name):
-        check(name)
-        with lock:
-            data = getattr(cache, name)
-            yield data
-            setattr(cache, name, data)
-            do_dump(name, data)
-
-    def export(name): # remove this? export base instead?
-        check(name)
-        with lock:
-            data = do_load(name)
-            filename = dotjson % name
-            with open(filename, "w", encoding="utf-8") as f:
-                json.dump(data, f)
-            return filename
-
-    return duxlot.FrozenStorage({
-        "init": init,
-        "load": load,
-        "dump": dump,
-        "context": context,
-        "export": export,
-        "cache": cache,
-        "lock": lock
-    })
-
-comment = """
-def main(name=None):
-    import os.path
-    import json
-
-    if name is None:
-        name = os.path.expanduser("~/.duxlot")
-
-    with open(name) as f:
-        config = json.load(f)
-
-    Client(config)
-"""
-
-if __name__ == "__main__":
-    ... # main()
-
-# eof
+# @@ a more efficient message parser
+# @@ a more efficient environment builder
+# @@ a naïve timer for other commands
+# @@ separate namespace for command chaining state
+# @@ note where the lock is used, and the types of usage
+# @@ ..commands for web services, or .regular and .services other
+# @@ last n seconds of events, event list
+# @@ reload config. nick/channels/prefix might change, etc.
+# @@ make F008 work, and the character itself
+# @@ make it clear when a child process goes boom
+# @@ ignore list
+# @@ show/delete my messages
+# @@ find out the flood limits
+# @@ recovering from process errors
+# @@ make tasks queue joinable
+# @@ latest version warning
+# @@ travis build
+# @@ ./release or ./tag?
+# @@ cache for channel users
+# @@ namespaced data, and item style putting
+# @@ relative Location bug
+# @@ better config documentation
+# @@ credentialise admin.py
+# @@ bot / task and schedule functions for commands to use
+# @@ writebackable config
+# @@ refuse to run in .duxlot-src

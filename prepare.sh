@@ -27,9 +27,8 @@ find . -name '.DS_Store' -exec rm {} \;
 echo Creating distribution, and uploading to the CheeseShop
 python3 setup.py sdist --formats=bztar upload
 
-echo Moving distribution into place
-mv ../*.tar.bz2 ~/
-mv dist/*.tar.bz2 ../
+echo Moving distribution to archive
+mv dist/*.tar.bz2 ~/.duxlot/
 
 echo Cleaning up files
 rm -rf ./dist/

@@ -57,7 +57,7 @@ def beats(args):
 
 @service(clock)
 def cache_timezones_data(args):
-    with open(data("timezones.json"), encoding="utf-8") as f:
+    with duxlot.filesystem.open(data("timezones.json"), encoding="utf-8") as f:
         clock.timezones_data = json.load(f)
 
 @service(clock)
@@ -175,7 +175,7 @@ def parse_zoneinfo(args):
     # Specification from http://69.36.11.139/tzdb/tzfile-format.html
     # tzfile(5) also gives the information, though less clearly
 
-    with open(args.filename, "rb") as f:
+    with duxlot.filesystem.open(args.filename, "rb") as f:
         def get(struct_format):
             struct_format = "> " + struct_format
             file_bytes = f.read(struct.calcsize(struct_format))
@@ -196,22 +196,22 @@ def parse_zoneinfo(args):
             ttinfo.append(ttinfo_struct)
     
         abbreviations = get("%sc" % counts["char"])
-    
-        index = 0
-        abbreviation_indices = {}
-        for abbreviation in b"".join(abbreviations).split(b"\x00"):
-            abbreviation_indices[index] = abbreviation.decode("us-ascii")
-            index += len(abbreviation) + 1
-    
-        for current, ttinfo_struct in enumerate(ttinfo):
-            replacement = abbreviation_indices[ttinfo_struct[2]]
-            ttinfo[current] = (ttinfo_struct[0], ttinfo_struct[1], replacement)
-    
-        offset, dst, abbreviation = ttinfo[0]
-        tzinfo = [(None, offset, dst, abbreviation)]
-        for transition, index in zip(transitions, indices):
-            offset, dst, abbreviation = ttinfo[index]
-            tzinfo.append((transition, offset, dst, abbreviation))
+
+    index = 0
+    abbreviation_indices = {}
+    for abbreviation in b"".join(abbreviations).split(b"\x00"):
+        abbreviation_indices[index] = abbreviation.decode("us-ascii")
+        index += len(abbreviation) + 1
+
+    for current, ttinfo_struct in enumerate(ttinfo):
+        replacement = abbreviation_indices[ttinfo_struct[2]]
+        ttinfo[current] = (ttinfo_struct[0], ttinfo_struct[1], replacement)
+
+    offset, dst, abbreviation = ttinfo[0]
+    tzinfo = [(None, offset, dst, abbreviation)]
+    for transition, index in zip(transitions, indices):
+        offset, dst, abbreviation = ttinfo[index]
+        tzinfo.append((transition, offset, dst, abbreviation))
 
     return tzinfo
 
@@ -433,7 +433,7 @@ general.name = "general"
 
 @service(general)
 def duxlot_version(args):
-    with open(data("version"), "r", encoding="ascii") as f:
+    with duxlot.filesystem.open(data("version"), "r", encoding="ascii") as f:
         version = f.read()
     version = version.rstrip()
     return version
@@ -448,7 +448,7 @@ geo.name = "geo"
 def timezone(args):
     out = duxlot.Storage()
     page = web.request(
-        url="http://glados.default.trilby.uk0.bigv.io:3425/iptime/",
+        url="http://dial-a-page.dpk.org.uk/iptime/",
         query={"ip": args.ip}
     )
 
@@ -462,7 +462,7 @@ def timezone(args):
 def timezone_info(args):
     out = duxlot.Storage()
     page = web.request(
-        url="http://glados.default.trilby.uk0.bigv.io:3425/iptime/",
+        url="http://dial-a-page.dpk.org.uk/iptime/",
         query={"ip": args.address}
     )
 
@@ -1346,7 +1346,7 @@ def hundred_opens(args):
 
 @service(unicode)
 def load_unicode_data(args):
-    with open(data("unicodedata.pickle"), "rb") as f:
+    with duxlot.filesystem.open(data("unicodedata.pickle"), "rb") as f:
         return pickle.load(f)
 
 @service(unicode)
@@ -1369,7 +1369,7 @@ def update_unicode_data(args):
         a, b, c, d, e, f, g, h, i, j, k, l, m, n, o = line.split(";")
         data = unicode.character_data(a=a, b=b, c=c, k=k)
         unicode_data[a] = data()
-    with open(data("unicodedata.pickle"), "wb") as f:
+    with duxlot.filesystem.open(data("unicodedata.pickle"), "wb") as f:
         pickle.dump(unicode_data, f)
 
 

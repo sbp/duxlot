@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# @@ -Ou
 
 # Copyright 2012, Sean B. Palmer
 # Code at http://inamidst.com/duxlot/

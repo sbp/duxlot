@@ -37,6 +37,8 @@ else:
     from functions import *
     from storage import *
 
+# @@ from [.]script import main as script?
+
 def client(*args, **kargs):
     # Save PEP 3122!
     if "." in __name__:
@@ -47,8 +49,9 @@ def client(*args, **kargs):
 
 import os.path
 
-with open(os.path.join(path, "data", "version"), encoding="ascii") as f:
+with filesystem.open(os.path.join(path, "data", "version"), encoding="ascii") as f:
     version = f.read()
     version = version.rstrip()
 
+del f
 del os

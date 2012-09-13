@@ -22,7 +22,7 @@ signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
 class Unbuffered:
     def __init__(self, stream):
-        self.stream = stream
+        self.stream = stream # @@ __stream
 
     def write(self, data):
         self.stream.write(data)
@@ -98,7 +98,7 @@ def daemonise(args):
     redirect(sys.stdout, args.output)
     redirect(sys.stderr, args.output)
 
-    with open(args.pidfile, "w") as f:
+    with duxlot.filesystem.open(args.pidfile, "w") as f:
         f.write(str(pid) + "\n")
 
     def delete_pidfile():
@@ -117,7 +117,7 @@ def running(pid):
 
 def read_pidfile(name):
     try:
-        with open(name, "r") as f:
+        with duxlot.filesystem.open(name, "r") as f:
             text = f.read()
         number = text.lstrip("\n")
         return int(number)
@@ -134,7 +134,7 @@ def clean_pidfile(name, pid):
 def resolve(identifier):
     def resolve_path(path):
         path = os.path.expanduser(path)
-        return os.abspath(path)
+        return os.path.abspath(path)
 
     def resolve_alias(alias):
         alias = "default" if (alias is None) else alias
@@ -183,6 +183,41 @@ def resolve(identifier):
     # Neither path_exists nor alias_exists
     print("Error: %s is neither a valid path nor a known alias" % identifier)
     sys.exit(1)
+
+comment = '''
+def check_current():
+    # @@ import api
+
+    page = api.web.request(
+        url="https://raw.github.com/sbp/duxlot/master/data/version"
+    )
+
+    if page.mime == "text/plain":
+        current = page.text.rstrip()
+    
+        that = tuple(int(n) for n in current.replace("-", ".").split("."))
+        this = tuple(int(n) for n in duxlot.version.replace("-", ".").split("."))
+    
+        if this < that:
+            print("""\
+=== WARNING ===
+
+This version of duxlot (%s) is out of date!
+
+Download the latest version (%s) here:
+
+http://pypi.python.org/packages/source/d/duxlot/duxlot-%s.tar.bz2
+
+Or get the source from Github:
+
+https://github.com/sbp/duxlot
+
+Using the latest version helps the maintainer to get better feedback.
+
+In versions which are not alpha quality, this message will be reduced,
+and a config file option may be enabled to turn such messages off.
+""" % (duxlot.version, current, current))
+'''
 
 @action
 def alias(args):
@@ -253,12 +288,7 @@ def active(args):
         sys.exit(1)
 
     config = resolve(args.identifier)
-
     filename, base, data = duxlot.config.info(config)
-    if args.where:
-        print(filename)
-        return 0
-
     args.pidfile = base + ".pid"
 
     # Does the PID file already exist?
@@ -266,9 +296,11 @@ def active(args):
         pid = read_pidfile(args.pidfile)
         if running(pid):
             print("duxlot is already running as PID %s" % pid)
+            print("Base:", duxlot.config.reduceuser(base))
             return 0
         else:
             print("duxlot is not running")
+            print("Base:", duxlot.config.reduceuser(base))
             clean_pidfile(args.pidfile, pid)
             print("Warning: There was a PID file, now cleaned")
             return 0
@@ -278,6 +310,7 @@ def active(args):
         return 1
     else:
         print("duxlot is not running")
+        print("Base:", duxlot.config.reduceuser(base))
         return 0
 
 @action
@@ -297,12 +330,13 @@ Usage:
     duxlot --usage - Longer version of this help message
     duxlot --version - Show the current duxlot version
     duxlot --options - Show a list of available config options
+    duxlot --console - Run a limited term console version of duxlot
 
 Control actions:
 
-    duxlot [FLAGS] start [<identifier>]
-        --foreground  -  don't run the bot as a daemon
-        --output <path>  -  redirect stdout and stderr to <path>
+    duxlot [ --<flags> ] start [<identifier>]
+        --foreground - don't run the bot as a daemon
+        --output <path> - redirect stdout and stderr to <path>
     duxlot stop [<identifier>]
     duxlot restart [<identifier>]
     duxlot active [<identifier>]
@@ -315,6 +349,7 @@ Configuration actions:
     duxlot config <identifier>
 """)
 
+# @@ --actions
 def usage():
     print("""\
 Usage:
@@ -327,6 +362,9 @@ Usage:
 
     duxlot --options
         Show a list of available config options
+
+    duxlot --console
+        Run a limited term console version of duxlot
 
 Control actions:
 
@@ -380,10 +418,6 @@ def start(args):
         return 1
 
     config = resolve(args.identifier)
-    if args.where:
-        print(config)
-        return 0
-
     filename, base, data = duxlot.config.info(config)
     args.pidfile = base + ".pid"
 
@@ -414,10 +448,6 @@ def stop(args):
         sys.exit(1)
 
     config = resolve(args.identifier)
-    if args.where:
-        print(config)
-        return 0
-
     filename, base, data = duxlot.config.info(config)
     args.pidfile = base + ".pid"
 
@@ -516,6 +546,20 @@ def version(args):
 
     print("duxlot", duxlot.version)
 
+def console(args):
+    if not only(args, {"console"}):
+        print("Error: Expected only --console, no other options")
+        sys.exit(1)
+
+    # Save PEP 3122!
+    if "." in __name__:
+        from . import console
+    else:
+        import console
+
+    # @@ suppress the load warnings
+    console.main()
+
 # @@ an "aliases" action, to show all aliases
 
 def doc(text, local):
@@ -554,15 +598,11 @@ def main():
         description="Control duxlot IRC bot instances",
         add_help=False
     )
+
     parser.add_argument(
-        "-a", "--actions",
-        help="show all available actions and their effects",
+        "-c", "--console",
+        help="use a limited version of duxlot as a term console",
         action="store_true"
-    )
-    parser.add_argument(
-        "-c", "--config",
-        metavar="FILENAME",
-        help="use this JSON configuration file"
     )
     parser.add_argument(
         "-f", "--foreground",
@@ -578,12 +618,6 @@ def main():
         "-o", "--output",
         metavar="FILENAME",
         help="redirect daemon stdout and stderr to this filename"
-    )
-    # @@ a "which" action
-    parser.add_argument(
-        "-w", "--where",
-        help="don't run anything, show the config file that would be used",
-        action="store_true"
     )
     parser.add_argument(
         "--usage",
@@ -620,6 +654,9 @@ def main():
 
     elif args.version:
         version(args)
+
+    elif args.console:
+        console(args)
 
     elif args.action:
         if args.action in action.names:
