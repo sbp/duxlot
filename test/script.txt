@@ -1,0 +1,311 @@
+$ HOME=/tmp/dux
+
+$ : Testing DIRECTORY_UNMAKEABLE
+
+$ rm -rf /tmp/dux
+
+$ touch /tmp/dux
+
+$ duxlot create
+Error: DIRECTORY_UNMAKEABLE
+
+Tried to create a duxlot configuration directory here:
+
+    /tmp/dux/.duxlot
+
+But the operation was not allowed. Python gave this error:
+
+    OSError: [Errno 20] Not a directory: '/tmp/dux/.duxlot'
+
+Duxlot tried to create this directory recursively, which means that it tried to
+create any parent directories too. Check to make sure that duxlot can write
+here. Does a regular file exist in the way? Are permissions correctly set on
+the parent directory? Is the user set correctly?
+
+If this directory cannot be created, duxlot cannot create default configuration
+and configuration alias files, but can still be run without them.
+
+To use a different default directory configuration, you can set the value of
+the $DUXLOT_DIRECTORY environment variable to another directory. Duxlot will
+attempt to create this, too, if it does not yet exist.
+
+$ rm /tmp/dux
+
+$ : Testing DIRECTORY_NON_DIRECTORY
+
+$ rm -rf /tmp/dux
+
+$ mkdir /tmp/dux
+
+$ touch /tmp/dux/.duxlot
+
+$ duxlot create
+Error: DIRECTORY_NON_DIRECTORY
+
+Your duxlot configuration directory path exists, but is not a directory:
+
+    /tmp/dux/.duxlot
+
+This is probably because you have written a regular file called .duxlot in your
+home directory, whereas duxlot wants that to be a directory, in order to put
+the default configuration file and aliases file in it.
+
+If you intended .duxlot to be a JSON configuration file, you can still use it
+as such, but it will be incompatible with using default configuration files,
+and configuration path aliases in duxlot.
+
+$ : Testing CONFIG_UNWRITEABLE
+
+$ rm -rf /tmp/dux
+
+$ mkdir -p /tmp/dux/.duxlot
+
+$ chmod 000 /tmp/dux/.duxlot
+
+$ duxlot create
+Error: CONFIG_UNWRITEABLE
+
+Your duxlot configuration file exists but can't be written to:
+
+    /tmp/dux/.duxlot/duxlot.json
+
+There is probably a permissions error with either the file itself, or one of
+its parent directories. Check to make sure that the user duxlot is running as
+has write access to that file.
+
+$ chmod 755 /tmp/dux/.duxlot
+
+$ : Testing CONFIG_NON_REGULAR
+
+$ rm -rf /tmp/dux
+
+$ mkdir -p /tmp/dux/.duxlot/duxlot.json
+
+$ duxlot create
+Error: CONFIG_NON_REGULAR
+
+The following path exists, but is not a regular file as it ought to be:
+
+    /tmp/dux/.duxlot/duxlot.json
+
+This problem is probably caused by trying to pass a path to what was thought to
+be a JSON file but is in fact a directory.
+
+$ : Testing CONFIG_NOT_JSON
+
+$ rm -rf /tmp/dux
+
+$ duxlot start /tmp/dux/garbage.json
+Error: CONFIG_NOT_JSON
+
+Your duxlot configuration file exists but is not valid JSON:
+
+    /tmp/dux/garbage.json
+
+The error message that the JSON parser gave is:
+
+    No JSON object could be decoded
+
+Which may or may not be helpful, since the duxlot maintainer does not have any
+control over the Python JSON implementation. If you need help writing a valid
+JSON file, try reading through the following resources:
+
+    http://en.wikipedia.org/wiki/JSON
+    http://guide.couchdb.org/draft/json.html
+
+You may also ask the duxlot maintainer for help.
+
+$ : Testing CONFIG_UNREADABLE
+
+$ rm -rf /tmp/dux
+
+$ mkdir /tmp/dux
+
+$ touch /tmp/dux/unreadable.json
+
+$ chmod 000 /tmp/dux/unreadable.json
+
+$ duxlot start /tmp/dux/unreadable.json
+Error: CONFIG_UNREADABLE
+
+Your duxlot configuration file exists but can't be read:
+
+    /tmp/dux/unreadable.json
+
+There is probably a permissions error with either the file itself, or one of
+its parent directories. Check to make sure that the user duxlot is running as
+has access to that file.
+
+$ chmod 644 /tmp/dux/unreadable.json
+
+$ : Testing BASE_DIRECTORY_UNWRITEABLE
+
+$ rm -rf /tmp/dux
+
+$ mkdir -p /tmp/dux/conf
+
+$ touch /tmp/dux/conf/config.json
+
+$ chmod 000 /tmp/dux/conf
+
+$ duxlot start /tmp/dux/conf/config.json
+Error: BASE_DIRECTORY_UNWRITEABLE
+
+The directory that your duxlot configuration file is in cannot be written to:
+
+    /tmp/dux/conf
+
+There is a directory there, but duxlot is unable to access it. There is
+probably a permissions error with either the directory itself, or one of its
+parent directories. Check to make sure that the user duxlot is running as has
+write access to that directory.
+
+$ chmod 755 /tmp/dux/conf
+
+$ : Testing BASE_UNUSABLE
+
+$ rm -rf /tmp/dux
+
+$ mkdir /tmp/dux
+
+$ touch /tmp/dux/.json
+
+$ duxlot start /tmp/dux/.json
+Error: BASE_UNUSABLE
+
+The following configuration base is not usable:
+
+    /tmp/dux/
+
+This usually happens when your configuration file is called just ".json"
+instead of having a name before the extension, such as "config.json". The configuration file duxlot tried to use is:
+
+    /tmp/dux/.json
+
+Duxlot needs a base to work with for other files. You can easily solve this by
+renaming your configuration file.
+
+$ : Testing double create
+
+$ rm -rf /tmp/dux
+
+$ duxlot create
+Created default duxlot configuration directory:
+
+   /tmp/dux/.duxlot
+
+Created duxlot default configuration file:
+
+   /tmp/dux/.duxlot/duxlot.json
+
+You may now edit this default configuration, then run the bot:
+
+    $ duxlot start
+
+$ duxlot create
+Error: The default configuration file already exists:
+
+   /tmp/dux/.duxlot/duxlot.json
+
+$ : Testing script.py options
+
+$ rm -rf /tmp/dux
+
+$ duxlot
+To create a default configuration file to start from:
+
+    ./duxlot create
+
+Or, to view a list of options:
+
+    ./duxlot --help
+
+$ duxlot --help
+Usage:
+
+    duxlot --version - Show the current duxlot version
+    duxlot --actions - Show more documentation for available actions
+    duxlot --console - Run a limited term console version of duxlot
+
+Control actions:
+
+    duxlot [ --<flags> ] start [<identifier>]
+        --foreground - don't run the bot as a daemon
+        --output <path> - redirect stdout and stderr to <path>
+    duxlot stop [<identifier>]
+    duxlot restart [<identifier>]
+    duxlot active [<identifier>]
+
+Configuration actions:
+
+    duxlot create
+    duxlot alias <path> <alias>
+    duxlot unalias <alias>
+    duxlot config <identifier>
+
+
+$ duxlot --actions
+Control actions:
+
+    duxlot [FLAGS] start [<identifier>]
+        Starts a bot. Optional [FLAGS]:
+
+            --foreground - Don't run the bot as a daemon
+            --output <path> - Redirect stdout and stderr to <path>
+
+        An <identifier> is a relative or absolute path, or an alias.
+        The value of "duxlot config" will be used by default.
+
+    duxlot stop [<identifier>]
+        Stops a bot
+
+    duxlot restart [<identifier>]
+        Restarts a bot. Calls stop then start
+
+    duxlot active [<identifier>]
+        Shows whether a bot is active
+
+Configuration actions:
+
+    duxlot create
+        Create a default configuration file
+
+    duxlot alias <path> <alias>
+        Set <alias> as an alias of <path>
+
+    duxlot unalias <alias>
+        Remove <alias> if it exists
+
+    duxlot config <identifier>
+        Show the config file referred to by <identifier>
+
+
+$ duxlot --version
+duxlot VERSION
+
+$ duxlot create
+Created default duxlot configuration directory:
+
+   /tmp/dux/.duxlot
+
+Created duxlot default configuration file:
+
+   /tmp/dux/.duxlot/duxlot.json
+
+You may now edit this default configuration, then run the bot:
+
+    $ duxlot start
+
+$ duxlot -f start
+Running as PID <pid>
+Imported admin, core, glue, standard from $PWD/standard
+Connecting to irc.freenode.net:6667
+START! process_send
+START! process_receive
+START! process_messages
+START! process_schedule
+START! process_events
+RECV: b':irc.freenode.net NOTICE * :*** Looking up your hostname...\r\n'
+
+$ rm -rf /tmp/dux
+

@@ -23,6 +23,7 @@ else:
     import api
     import process
 
+# @@ Could move this to storage.filesystem.modules(directory)
 def modules_in_directory(directory):
     import glob
     names = []
@@ -59,7 +60,8 @@ class Client(object):
         self.load()
         self.setup()
 
-        self.create_socket()
+        # process.SocketProcess calls this, no need to do it here
+        # self.create_socket()
         self.start()
         self.tasks()
 
@@ -98,26 +100,44 @@ class Client(object):
         safe.log = log
 
     def handle_signals(self):
+        # http://stackoverflow.com/questions/2549939
+        signames = {}
+        for name, number in signal.__dict__.items():
+            if name.startswith("SIG") and not name.startswith("SIG_"):
+                signames[number] = name
+
+        # @@ Different handler for SIGTERM and SIGINT?
+        # @@ Only run in process:main, using PID
         def terminate(signum, frame):
-            user = os.environ.get("USER", "signal")
-            message = "%s made me do it (signal %s)" % (user, signum)
+            # self.processes.empty()
+
+            # @@ Actually could be another user sending the signal
+            user = os.environ.get("USER", "a signal")
+            signame = signames.get(signum, signum)
+            message = "%s made me do it (%s)" % (user, signame)
             self.safe.send_message("QUIT", message)
 
-            # Ask nicely
+            # This calls .finish(), so the QUIT above should work
             self.processes.stop()
 
-            # A little less nicely...
+            # Stop any stray commands, potentially corrupting queues
             try: self.safe.commands.collect(0)
             except: ...
 
-            # SHOUT!
-            for process in multiprocessing.active_children():
-                try: process.terminate()
-                except: ...
+            # Send SIGKILL to any remaining processes that we know of
+            process.killall()
 
-            sys.exit()
+            # Since we're exiting, we don't need to mop up process queues
+            os._exit(0)
         signal.signal(signal.SIGTERM, terminate)
         signal.signal(signal.SIGINT, terminate)
+
+        def broken_script_pipe(signum, frame):
+            try: self.processes[self.processes.socket].finish()
+            except: ...
+            process.killall()
+            sys.exit() # Not os._exit
+        signal.signal(signal.SIGUSR1, broken_script_pipe)
 
     def load(self):
         import importlib
@@ -146,12 +166,12 @@ class Client(object):
                 imported_names.append(module_name)
                 sys.path[:2] = []
 
+            # @@ reduce PWD too?
             udir = duxlot.config.reduceuser(directory)
             debug("Imported", ", ".join(imported_names), "from", udir)
 
     def reload(self, sender=None, nick=None):
         import imp
-        # import importlib
 
         def error(msg):
             if sender and nick:
@@ -159,11 +179,13 @@ class Client(object):
 
         duxlot.clear()
 
+        sys.path[:0] = [duxlot.path]
+        imp.reload(api)
+        sys.path[:1] = []
+
         for (module_name, directory), module in self.modules.items():
             sys.path[:0] = [directory, duxlot.path]
 
-            # info = (module_name,) + imp.find_module(module_name)
-            # try: reloaded = imp.load_module(*info)
             try: reloaded = imp.reload(module)
             except Exception as err:
                 message = "%s: %s" % (err.__class__.__name__, err)
@@ -179,11 +201,12 @@ class Client(object):
         return True
 
     def setup(self):
-        # @@ recording sources of commands
-        self.safe.named = duxlot.commands.copy()
-        self.safe.events = duxlot.events.copy()
+        # @@ Recording sources of commands
         for startup in duxlot.startups:
             startup(self.safe)
+
+        self.safe.named = duxlot.commands.copy()
+        self.safe.events = duxlot.events.copy()
 
     def start(self):
         self.processes["receive"].action(process_receive, self.safe)
@@ -207,6 +230,7 @@ class Client(object):
             )
 
         address = (self.safe.options["server"], self.safe.options["port"])
+
         debug("Connecting to %s:%s" % address)
         try: sock.connect(address)
         except socket.error:
@@ -236,8 +260,7 @@ class Client(object):
 
     @task
     def main_log(self, *text):
-        # @@ debug(*text)
-        duxlot.output.write(*text)
+        debug(*text)
 
     @task
     def main_reload(self, sender=None, nick=None):
@@ -276,17 +299,22 @@ class Client(object):
         debug("Stopped processes...")
         debug(" ")
 
+        self.processes.empty()
+        if not self.safe.options["flood"]:
+            time.sleep(3)
+
         elapsed = 0
         while self.safe.commands.collectable(0):
             time.sleep(1)
             elapsed += 1
             if elapsed > 6:
-                self.main.collect()
-                self.main.restart() # @@ loops
+                collected = self.safe.commands.collect(0)
+                debug("Restart collected", collected, "commands")
 
-        self.processes.empty()
-        if not self.safe.options["flood"]:
-            time.sleep(6)
+                # Wait for the processes to exit
+                # Otherwise, they might add to the queues after .empty()
+                time.sleep(3)
+                self.processes.empty()
 
         debug("Starting processes...")
         self.processes.start()
@@ -335,15 +363,15 @@ class Client(object):
             self.safe.send_message("PRIVMSG", sender, nick + ": " + msg)
 
     @task
-    def main_collect(self):
-        collectable = self.safe.commands.collectable(60)
+    def main_collect(self, timeout=60):
+        collectable = self.safe.commands.collectable(timeout)
 
         if collectable:
             debug("Pausing processes")
             self.processes.pause()
 
             debug("Collecting commands")
-            collected = self.safe.commands.collect(50)
+            collected = self.safe.commands.collect(max(0, timeout - 10))
             debug("Collected", collected, "commands")
 
             debug("Flushing queues")
@@ -351,14 +379,10 @@ class Client(object):
 
             debug("Setting new queues")
             self.safe.sending = self.processes["send"].queue
-            # self.safe.messages = self.processes["messages"].queue
-            # self.safe.event_messages = self.processes["events"].queue
             self.safe.schedule = self.processes["schedule"].queue
 
             debug("Setting new actions")
             self.processes["send"].action(process_send, self.safe)
-            # self.processes["messages"].action(process_messages, self.safe)
-            # self.processes["events"].action(process_events, self.safe)
             self.processes["schedule"].action(process_schedule, self.safe)
 
             debug("Resuming...")
@@ -394,18 +418,21 @@ def process_receive(safe):
             o.count = count
             safe.messages.put(o())
 
-            # @@ remove this?
+            # @@ debug here can hang if there are pipe problems
             debug("RECV:", octets)
 
     with safe.socket.makefile("rb") as sockfile:
         try: receive_loop(safe, sockfile)
         except (IOError, EOFError, socket.error, ssl.SSLError):
+            # @@ debug here can hang if there are pipe problems
             debug("Got socket or SSL error")
             safe.tasks.put(("restart",))
         else:
+            # @@ debug here can hang if there are pipe problems
             debug("Got regular disco")
             safe.tasks.put(("restart",)) # @@
 
+    # @@ debug here can hang if there are pipe problems
     debug("DONE! process:receive")
 
 # (b) process:send
@@ -425,28 +452,33 @@ def process_send(safe):
     
                 octets = octets.replace(b"\r", b"")
                 octets = octets.replace(b"\n", b"")
-    
-                if not safe.options["flood"]:
-                    now = time.time()
-                    if sent > (now - 1):
-                        time.sleep(0.5)
-                    sent = now
-    
+
                 if len(octets) > 510:
                     octets = octets[:510]
-    
+
+                # @@ If we wait for QUIT, the socket can I/O error
+                # This is strange because the receive socket is fine
+                if not octets.startswith(b"QUIT"):
+                    if not safe.options["flood"]:
+                        now = time.time()
+                        if sent > (now - 1):
+                            time.sleep(0.5)
+                        sent = now
+
                 sockfile.write(octets + b"\r\n")
                 sockfile.flush()
-    
-                # @@ remove this?
+
+                # @@ debug here can hang if there are pipe problems
                 debug("SENT:", octets + b"\r\n")
                 safe.sending.task_done()
 
     try: send_loop()
-    except (IOError, EOFError, socket.error, ssl.SSLError):
+    except (IOError, EOFError, socket.error, ssl.SSLError) as err:
+        debug("Send Error:", err.__class__.__name__, err)
         ...
 
     safe.sending.task_done()
+    # @@ debug here can hang if there are pipe problems
     debug("DONE! process:send")
 
 # (c) process:messages
@@ -466,6 +498,7 @@ def process_messages(safe):
         safe.messages.task_done()
 
     safe.messages.task_done()
+    # @@ debug here can hang if there are pipe problems
     debug("DONE! process:messages")
 
 # (d) process:events
@@ -498,6 +531,7 @@ def process_events(safe):
 
         safe.event_messages.task_done()
     safe.event_messages.task_done()
+    # @@ debug here can hang if there are pipe problems
     debug("DONE! process:events")
 
 # (e) process:schedule
@@ -535,6 +569,7 @@ def process_schedule(safe):
     periodic.called = {}
     periodic.stamp = {}
 
+    # @periodic(safe.opt.time_between_pings_in_seconds)
     @periodic(300)
     def ping(current):
         task(("ping",))
@@ -550,6 +585,8 @@ def process_schedule(safe):
                 task(("ponged", pinged))
                 periodic.period["ponged"] = None
 
+    # time_between_schedule_database_dumps
+    # irc.process.schedule.periodic.dump.period.seconds
     @periodic(180)
     def dump(current):
         # @@ dump only if it's changed
@@ -639,6 +676,7 @@ def process_schedule(safe):
 
     database.dump("schedule", schedule)
 
+    # @@ debug here can hang if there are pipe problems
     debug("DONE! process:schedule")
 
 ### Process anciliaries ###
@@ -658,24 +696,29 @@ def handle_named(safe, named, message):
                 # @@ multiprocessing.managers.RemoteError
                 # env = create_irc_env(safe, message) # @@!
                 # @@ pre-command
-                if not safe.options["debug"]:
-                    try: named[env.command](env)
-                    # except duxlot.Error as err:
-                    #     env.say("API Error: %s" % err) # @@!
-                    except Exception as err:
-                        import os.path, traceback
-                        item = list(traceback.extract_tb(err.__traceback__, limit=2).pop())
-                        item[0] = os.path.basename(item[0])
-                        where = "%s:%s %s(...) %s" % tuple(item)
-                        env.say("Python Error. %s: %s" % (err, where))
-                else:
-                    named[env.command](env)
+                try: named[env.command](env)
+                except api.Error as err:
+                    env.say("Error: %s" % err)
+                except Exception as err:
+                    import os.path
+                    import traceback
+
+                    name = err.__class__.__name__
+                    stack = traceback.extract_tb(err.__traceback__, limit=2)
+                    item = list(stack.pop())
+                    item[0] = os.path.basename(item[0])
+                    where = "%s:%s at %s(...) %s" % tuple(item)
+                    env.say("Script Error: %s: %s, in %s" % (name, err, where))
+
+                    debug("---")
+                    for line in traceback.format_exception(
+                            err.__class__, err, err.__traceback__):
+                        line = line.rstrip("\n")
+                        line = line.replace(duxlot.path + os.sep, "")
+                        debug(line)
+                    debug("---")
                 # @@ post-command
                 used(env.command)
-
-            # while number_of_processes >= process_limit:
-            #    time.sleep(0.5)
-            # if > timeout, complain
 
             safe.commands.spawn(process_command, env)
     debug("Quitting handle_named")
@@ -789,3 +832,4 @@ def create_send_message(sending, log):
 # @@ bot / task and schedule functions for commands to use
 # @@ writebackable config
 # @@ refuse to run in .duxlot-src
+# @@ reply should automatically not prepend nick in private

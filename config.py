@@ -93,12 +93,14 @@ aliases = storage.FrozenStorage({
 })
 
 def base(path):
+    original = path[:]
+
     if path.endswith(".json"):
         # Remove ".json" extension
         path = path[:-5]
 
     if not os.path.basename(path):
-        fail(error.BASE_UNUSABLE % reduceuser(path))
+        fail(error.BASE_UNUSABLE % (path, original))
 
     return path
 
@@ -121,9 +123,11 @@ def directory_create():
     #     raise Exception("Directory already exists")
     import sys
 
-    try: os.mkdir(directory.path)
-    except (OSError, IOError):
-        fail(error.DIRECTORY_UNWRITEABLE)
+    try: os.makedirs(directory.path)
+    except (OSError, IOError) as err:
+        msg = "%s: %s" % (err.__class__.__name__, err)
+        args = (directory.path, msg)
+        fail(error.DIRECTORY_UNMAKEABLE % args)
 
     print("Created default duxlot configuration directory:", file=sys.stderr)
     print("", file=sys.stderr)
@@ -144,7 +148,7 @@ def directory_exists():
 directory = storage.FrozenStorage({
     "create": directory_create,
     "exists": directory_exists,
-    "path": path("~/.duxlot") # @@ DUXLOT_DIRECTORY
+    "path": os.environ.get("DUXLOT_DIRECTORY", path("~/.duxlot"))
 })
 
 default = os.path.join(directory.path, "duxlot.json")
@@ -260,6 +264,8 @@ access to that file.
 
     "BASE_DIRECTORY_UNWRITEABLE": ##########
 """
+Error: BASE_DIRECTORY_UNWRITEABLE
+
 The directory that your duxlot configuration file is in cannot be written to:
 
     %s
@@ -268,37 +274,41 @@ There is a directory there, but duxlot is unable to access it. There is
 probably a permissions error with either the directory itself, or one of its
 parent directories. Check to make sure that the user duxlot is running as has
 write access to that directory.
-
-(Error Name: BASE_DIRECTORY_UNWRITEABLE)
-""" % reduceuser(directory.path),
+""", # args: 1
 
     "BASE_UNUSABLE": ##########
 """
+Error: BASE_UNUSABLE
+
 The following configuration base is not usable:
 
     %s
 
 This usually happens when your configuration file is called just ".json"
-instead of having a name before the extension, such as "config.json". Duxlot
-needs a base to work with for other files. You can easily solve this by
-renaming your configuration file.
+instead of having a name before the extension, such as "config.json". The configuration file duxlot tried to use is:
 
-(Error Name: BASE_UNUSABLE)
-""", # args: 1
+    %s
+
+Duxlot needs a base to work with for other files. You can easily solve this by
+renaming your configuration file.
+""", # args: 2
 
     "CONFIG_NON_REGULAR": ##########
 """
+Error: CONFIG_NON_REGULAR
+
 The following path exists, but is not a regular file as it ought to be:
 
     %s
 
-@@
-
-(Error Name: CONFIG_NON_REGULAR)
+This problem is probably caused by trying to pass a path to what was thought to
+be a JSON file but is in fact a directory.
 """, # args: 1
 
     "CONFIG_NOT_JSON": ##########
 """
+Error: CONFIG_NOT_JSON
+
 Your duxlot configuration file exists but is not valid JSON:
 
     %s
@@ -311,16 +321,16 @@ Which may or may not be helpful, since the duxlot maintainer does not have any
 control over the Python JSON implementation. If you need help writing a valid
 JSON file, try reading through the following resources:
 
-http://en.wikipedia.org/wiki/JSON
-http://guide.couchdb.org/draft/json.html
+    http://en.wikipedia.org/wiki/JSON
+    http://guide.couchdb.org/draft/json.html
 
 You may also ask the duxlot maintainer for help.
-
-(Error Name: CONFIG_NOT_JSON)
 """, # args: 2
 
     "CONFIG_UNREADABLE": ##########
 """
+Error: CONFIG_UNREADABLE
+
 Your duxlot configuration file exists but can't be read:
 
     %s
@@ -328,12 +338,12 @@ Your duxlot configuration file exists but can't be read:
 There is probably a permissions error with either the file itself, or one of
 its parent directories. Check to make sure that the user duxlot is running as
 has access to that file.
-
-(Error Name: CONFIG_UNREADABLE)
 """, # args: 1
 
     "CONFIG_UNWRITEABLE": ##########
 """
+Error: CONFIG_UNWRITEABLE
+
 Your duxlot configuration file exists but can't be written to:
 
     %s
@@ -341,12 +351,12 @@ Your duxlot configuration file exists but can't be written to:
 There is probably a permissions error with either the file itself, or one of
 its parent directories. Check to make sure that the user duxlot is running as
 has write access to that file.
-
-(Error Name: CONFIG_UNWRITEABLE)
 """, # args: 1
 
     "DIRECTORY_NON_DIRECTORY": ##########
 """
+Error: DIRECTORY_NON_DIRECTORY
+
 Your duxlot configuration directory path exists, but is not a directory:
 
     %s
@@ -356,25 +366,34 @@ home directory, whereas duxlot wants that to be a directory, in order to put
 the default configuration file and aliases file in it.
 
 If you intended .duxlot to be a JSON configuration file, you can still use it
-as such, but it will be incompatible with using configuration path aliases in
-duxlot.
+as such, but it will be incompatible with using default configuration files,
+and configuration path aliases in duxlot.
+""" % directory.path,
 
-(Error Name: DIRECTORY_NON_DIRECTORY)
-""" % reduceuser(directory.path),
-
-    "DIRECTORY_UNWRITEABLE": ##########
+    "DIRECTORY_UNMAKEABLE": ##########
 """
-Your duxlot configuration directory path exists, but can't be written to:
+Error: DIRECTORY_UNMAKEABLE
+
+Tried to create a duxlot configuration directory here:
 
     %s
 
-There is a directory there, but duxlot is unable to access it. There is
-probably a permissions error with either the directory itself, or one of its
-parent directories. Check to make sure that the user duxlot is running as has
-write access to that directory.
+But the operation was not allowed. Python gave this error:
 
-(Error Name: DIRECTORY_UNWRITEABLE)
-""" % reduceuser(directory.path),
+    %s
+
+Duxlot tried to create this directory recursively, which means that it tried to
+create any parent directories too. Check to make sure that duxlot can write
+here. Does a regular file exist in the way? Are permissions correctly set on
+the parent directory? Is the user set correctly?
+
+If this directory cannot be created, duxlot cannot create default configuration
+and configuration alias files, but can still be run without them.
+
+To use a different default directory configuration, you can set the value of
+the $DUXLOT_DIRECTORY environment variable to another directory. Duxlot will
+attempt to create this, too, if it does not yet exist.
+""", # args: 2
 
     "OPTION_DISALLOWED": ##########
 """
@@ -447,7 +466,7 @@ def info(name, validate=True):
     config_base = base(name)
     config_base_directory = os.path.dirname(config_base)
     if not writeable(config_base_directory):
-        fail(error.BASE_DIRECTORY_UNWRITEABLE)
+        fail(error.BASE_DIRECTORY_UNWRITEABLE % config_base_directory)
 
     config_data = read(name)
 
@@ -484,9 +503,6 @@ options = {
 
     "database": ("$(BASE).database", {str}, False, # IRC
         "Base to use for database information"), # @@ PID file?
-
-    "debug": (False, {bool}, False, # IRC
-        "Whether to catch and display python exceptions in commands"),
 
     "flood": (False, {bool}, False, # IRC
         "Bypass the built in flood protection"),
@@ -562,8 +578,7 @@ def read(path):
     with f:
         try: data = json.load(f)
         except ValueError as err:
-            args = (reduceuser(path), str(err))
-            fail(error.CONFIG_NOT_JSON % args)
+            fail(error.CONFIG_NOT_JSON % (path, err))
         except UnicodeDecodeError:
             fail(error.CONFIG_NOT_UTF8)
 
@@ -607,21 +622,21 @@ def write(path, data, pretty=False):
                 del data[name]
         del data["__options__"]
 
-    # @@
+    # @@ functionise this and put it in a try/except
     try: f = open(path, "w", encoding="utf-8")
     except (OSError, IOError):
-        fail(error.CONFIG_UNWRITEABLE % reduceuser(path))
+        fail(error.CONFIG_UNWRITEABLE % path)
 
     with f:
         if pretty:
             text = globals()["pretty"](data)
             try: f.write(text)
             except (OSError, IOError):
-                fail(error.CONFIG_UNWRITEABLE % reduceuser(path))
+                fail(error.CONFIG_UNWRITEABLE % path)
         else:
             try: json.dump(data, f)
             except (OSError, IOError):
-                fail(error.CONFIG_UNWRITEABLE % reduceuser(path))
+                fail(error.CONFIG_UNWRITEABLE % path)
 
     return True
 

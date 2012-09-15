@@ -20,13 +20,27 @@ signal.signal(signal.SIGHUP, signal.SIG_IGN)
 # Turn off buffering, like python3 -u
 # http://stackoverflow.com/questions/107705
 
+ourpid = None
+
 class Unbuffered:
     def __init__(self, stream):
         self.stream = stream # @@ __stream
 
     def write(self, data):
-        self.stream.write(data)
-        self.stream.flush()
+        try:
+            self.stream.write(data)
+            self.stream.flush()
+        except IOError:
+            import multiprocessing
+            multiprocessing.sys.stdout = self
+            multiprocessing.sys.stderr = self
+
+            self.write = lambda data: ...
+
+            # Possibly make this SIGUSR1
+            try: os.kill(ourpid, signal.SIGUSR1)
+            except OSError:
+                ...
 
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
@@ -102,9 +116,12 @@ def daemonise(args):
         f.write(str(pid) + "\n")
 
     def delete_pidfile():
-        os.remove(args.pidfile)
+        if os.path.isfile(args.pidfile):
+            os.remove(args.pidfile)
 
     atexit.register(delete_pidfile)
+
+    return pid
 
 def running(pid):
     import errno
@@ -327,9 +344,8 @@ def help():
     print("""\
 Usage:
 
-    duxlot --usage - Longer version of this help message
     duxlot --version - Show the current duxlot version
-    duxlot --options - Show a list of available config options
+    duxlot --actions - Show more documentation for available actions
     duxlot --console - Run a limited term console version of duxlot
 
 Control actions:
@@ -349,30 +365,15 @@ Configuration actions:
     duxlot config <identifier>
 """)
 
-# @@ --actions
-def usage():
+def actions():
     print("""\
-Usage:
-
-    duxlot --help
-        Shorter version of this help message
-
-    duxlot --version
-        Show the current duxlot version
-
-    duxlot --options
-        Show a list of available config options
-
-    duxlot --console
-        Run a limited term console version of duxlot
-
 Control actions:
 
     duxlot [FLAGS] start [<identifier>]
         Starts a bot. Optional [FLAGS]:
 
-            --foreground  -  don't run the bot as a daemon
-            --output <path>  -  redirect stdout and stderr to <path>
+            --foreground - Don't run the bot as a daemon
+            --output <path> - Redirect stdout and stderr to <path>
 
         An <identifier> is a relative or absolute path, or an alias.
         The value of "duxlot config" will be used by default.
@@ -404,6 +405,8 @@ Configuration actions:
 @action
 def start(args):
     "Start the specified duxlot instance"
+    global ourpid
+
     if not only(args, {"foreground", "output", "action", "identifier"}):
         print("Error: Usage: duxlot [-f] [-o] start [<path-or-alias>]")
         sys.exit(1)
@@ -437,6 +440,10 @@ def start(args):
 
     if not args.foreground:
         daemonise(args)
+        ourpid = os.getpid()
+    else:
+        ourpid = os.getpid()
+        print("Running as PID", ourpid)
 
     duxlot.client(filename, base, data)
 
@@ -467,7 +474,8 @@ def stop(args):
 
             print("Warning: PID %s did not quit within 20 seconds" % pid)
             os.kill(pid, signal.SIGKILL)
-            os.remove(args.pidfile)
+            if os.path.isfile(args.pidfile): # should fix dpk's error
+                os.remove(args.pidfile)
             print("Sent a SIGKILL, and removed the PID file manually")
             return 1
         else:
@@ -497,23 +505,26 @@ def restart(args):
 @action
 def create(args):
     "Create a default configuration file to work from"
-    if not only(args, {"create"}):
+    if not only(args, {"action"}):
         print("Error: Expected only 'create', no other options")
         sys.exit(1)
 
     if not duxlot.config.exists(duxlot.config.default):
         duxlot.config.create()
-        print("You may now edit the default configuration")
-        print("To run the bot, then do $ duxlot start")
+        print("You may now edit this default configuration, then run the bot:")
+        print("")
+        print("    $ duxlot start")
         sys.exit(0)
     else:
-        print("Error: The default configuration file already exists")
+        print("Error: The default configuration file already exists:")
+        print("")
         print("   " + duxlot.config.default)
         sys.exit(1)
 
-def actions(args):
-    if not only(args, {"actions"}):
-        print("Error: Expected only --actions, no other options")
+# @@ unused
+def act(args):
+    if not only(args, {"act"}):
+        print("Error: Expected only --act, no other options")
         sys.exit(1)
 
     action_documentation = []
@@ -527,15 +538,16 @@ def actions(args):
     print(action_documentation)
     return 0
 
+# @@ undocumented?
 @action
 def options(args):
     "Show valid duxlot configuration file option names"
     # @@ --options? oh, but -o. -d --documentation?
-    if not only(args, {"options"}):
+    if not only(args, {"action"}):
         print("Error: Expected only 'options', no other options")
         sys.exit(1)
 
-    for (option, info) in sorted(duxlot.config.variables.items()):
+    for (option, info) in sorted(duxlot.config.options.items()):
         if info.public:
             print("%s: %s" % (option, info.documentation))
 
@@ -584,7 +596,7 @@ def default():
     doc("""
 To create a default configuration file to start from:
 
-    {sys.argv[0]}
+    {sys.argv[0]} create
 
 Or, to view a list of options:
 
@@ -620,8 +632,8 @@ def main():
         help="redirect daemon stdout and stderr to this filename"
     )
     parser.add_argument(
-        "--usage",
-        help="show a long usage message",
+        "--actions",
+        help="show a long help message about actions",
         action="store_true"
     )
     parser.add_argument(
@@ -649,8 +661,8 @@ def main():
     if args.help:
         help()
 
-    elif args.usage:
-        usage()
+    elif args.actions:
+        actions()
 
     elif args.version:
         version(args)

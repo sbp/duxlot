@@ -33,9 +33,15 @@ class Error(Exception):
 def service(collection):
     def decorate(function):
         def decorated(**kargs):
+            # if collection.name == "text":
+            #     check args
             args = duxlot.FrozenStorage(kargs)
+            # if collection.name == "text":
+            #     check result
             return function(args)
         setattr(collection, function.__name__, decorated)
+        decorated.__doc__ = function.__doc__
+        # @@ .name, canonicalised
         return decorated
     return decorate
 
@@ -1029,6 +1035,921 @@ def substitute(args):
     for a, b in substitutions.items():
         url = url.replace(a, b)
     return url
+
+
+### Module: Text ###
+
+# text
+# maximum: chracters, bytes, lines
+
+text = duxlot.Storage()
+text.name = "text"
+
+@service(text)
+def about(args):
+    "Give information about a named bot command"
+    if not args.text:
+        return text.about.__doc__
+
+    if args.text in text():
+        function = getattr(text, args.text)
+    elif args.text in duxlot.commands:
+        function = duxlot.commands[args.text]
+    else:
+        return "Couldn't find that command"
+
+    if hasattr(function, "__doc__") and function.__doc__:
+        return function.__doc__ or "No documentation!"
+    return "That command has no documentation"
+
+@service(text)
+def beats(args):
+    "Show current time in Swatch internet beats"
+    opt = clock.beats()
+    return opt.beats
+
+# @@ .bing [...]vzmvnncvz
+# @@ <duxlot> Python Error. IncompleteRead(27254 bytes read): standard.py:101 bing(...) ?
+@service(text)
+def bing(args):
+    "Search for a phrase on Bing"
+    if not args.text:
+        return text.bing.__doc__
+
+    try: url = search.bing(phrase=args.text)
+    except Error:
+        return "Couldn't find any results"
+
+    if isinstance(url, str):
+        return url
+    return "No results found"
+
+@service(text)
+def bytes(args):
+    "Show input argument as python bytes representation"
+    # @@ this is giving a space prefix
+    return repr(args.text.encode("utf-8"))
+
+@service(text)
+def c(args):
+    "Calculate an expression using Google calculator"
+    if not args.text:
+        return text.c.__doc__
+
+    calculation = google.calculator(expression=args.text)
+    if "response" in calculation:
+        return calculation.response
+    return "Error"
+
+text.calc = text.c
+
+@service(text)
+def chars(args):
+    "Unicode characters grep" # @@ better __doc__ string
+    if not args.text:
+        return text.chars.__doc__
+
+    flag, arg = irc.optflag(arg=args.text)
+    if not arg:
+        return "Need something to search for"
+
+    result = unicode.character_grep(search=arg, categories=flag)
+    return result
+
+@service(text)
+def date(args):
+    "Display the current date in UTC"
+
+    # ZONE FROM NICK
+    # @@
+    flags = []
+    arg = args.text
+    for attempt in range(2):
+        flag, arg = irc.optflag(arg=arg)
+        if flag is None:
+            break
+        flags.append(flag)
+
+    if len(flags) not in {0, 2}:
+        return "Error: Expected zero or two flags"
+
+    if flags:
+        offset, abbreviation = tuple(flags)
+        offset = int(offset)
+    else:
+        offset, abbreviation = 0, "UTC"
+    # /@@
+
+    return clock.format_datetime(format="%Y-%m-%d", offset=offset)
+
+text.date.argument = "tz"
+
+@service(text)
+def decode(args):
+    "Decode text containing HTML entities"
+    if not args.text:
+        return text.decode.__doc__
+
+    return html.decode_entities(html=args.text)
+
+@service(text)
+def duck(args):
+    "Search for a phrase on DuckDuckGo"
+    if not args.text:
+        return text.duck.__doc__
+
+    return search.duck(phrase=args.text)
+
+# @@ inamidst.com, without http:// and /
+@service(text)
+def encoding(args):
+    "Determine the encoding of a web page"
+    if not args.text:
+        return text.encoding.__doc__
+
+    opt = web.request(url=args.text)
+
+    if "encoding" in opt:
+        summary = opt.encoding
+        if "encoding_source" in opt:
+            summary += " (%s)" % opt.encoding_source
+        return summary
+    elif "error" in opt: # @@
+        return "Error: %s" % opt.error
+
+    return "Couldn't determine the encoding"
+
+text.encoding.argument = "link"
+
+# @@ .ety love - random words?
+@service(text)
+def ety(args):
+    "Display the etymology of a term from Etymonline"
+    # @@ .ety love doesn't work
+    if not args.text:
+        return text.ety.__doc__
+
+    limit = args.maximum.get("bytes", 360)
+
+    try: opt = word.etymology(term=args.text, limit=limit)
+    except Error as err:
+        # @@ URI encoding
+        link = "http://etymonline.com/search.php?term=" + args.text
+        return "Nothing found. Try " + link
+
+    if "sentence" in opt:
+        return "\"%s\" - %s" % (opt.sentence, opt.url)
+    return "?"
+
+@service(text)
+def follow(args):
+    "Follow web page redirect and report the destination"
+    if not args.text:
+        return text.follow.__doc__
+
+    opt = web.request(
+        method="HEAD",
+        follow=True,
+        url=args.text
+    )
+
+    if "url" in opt:
+        return opt.url
+    elif "error" in opt:
+        return "Error: %s" % opt.error
+    else:
+        return "Couldn't follow that url"
+
+text.follow.argument = "link"
+
+@service(text)
+def g(args):
+    "Search for a phrase on Google"
+    if not args.text:
+        return text.g.__doc__
+
+    return google.search_api(phrase=args.text)
+
+@service(text)
+def gc(args):
+    "Show the Google search result count of a phrase"
+    if not args.text:
+        return text.gc.__doc__
+
+    flag, arg = irc.optflag(arg=args.text)
+    count = google.count(phrase=arg, method=flag)
+
+    if flag in {None, "", "*", "all"}:
+        # @@ only add the arg if there's been another recent gc
+        return "%s - %s" % (count, arg)
+    else:
+        return "%s: %s" % (arg, count)
+
+@service(text)
+def gcs(args):
+    "Show the Google search result counts of up to six terms inclusive"
+    # broken: §gcs [hello nsh] "what's up?" [this is a demo] of gcs
+    if not args.text:
+        return text.gcs.__doc__
+
+    flag, arg = irc.optflag(arg=args.text)
+
+    text = "[api] " if (not flag) else ""
+    method = "api" if (not flag) else flag
+
+    text += google.counts_api(terms=arg, method=method)        
+    return text
+
+@service(text)
+def gd(args):
+    "Get a definition using Google Dictionary"
+    # @@ .gd define is a bit spacey
+    if not args.text:
+        return text.gd.__doc__
+
+    return google.dictionary(term=args.text)
+
+# @@ should use recent link
+@service(text)
+def head(args):
+    "Get information about a web page using an HTTP HEAD request"
+    if not args.text:
+        return text.head.__doc__
+
+    # @@ getting ETag won't work
+    header = None
+    if " " in args.text:
+        a, b = args.text.split(" ", 1)
+        if "." in a:
+            url, header = a, b
+        else:
+            header, url = a, b
+    else:
+        url = args.text
+
+    opt = web.head_summary(url=url)
+    if header:
+        if header.lower() in opt.headers:
+            return opt.headers[header.lower()] or ""
+        else:
+            return "No header %s in %s" % (header, url)
+
+    return opt.summary or ""
+
+text.head.argument = "link"
+
+@service(text)
+def help(args):
+    "Provide details about duxlot and commands"
+    if args.text:
+        return text.about(**args())
+    else:
+        return "I'm a duxlot. Details: http://inamidst.com/duxlot/"
+
+@service(text)
+def i_love_the_w3c(args): # @@ validate
+    "Check a webpage using the W3C Markup Validator."
+    if not args.text:
+        return "Give me a link"
+
+    link = args.text
+    if not link.startswith("http://"):
+        link = "http://" + link
+
+    page = web.request(
+        url="http://validator.w3.org/check",
+        query={"uri": link, "output": "xml"}
+    )
+
+    result = link + " is "
+
+    if page.status != 200:
+        return "Got HTTP response %s" % page.status
+
+    # @@ api-ise
+    if "x-w3c-validator-status" in page.headers:
+        status = page.headers["x-w3c-validator-status"]
+        result += status
+        if status != "Valid":
+            if "x-w3c-validator-errors" in page.headers:
+                errors = page.headers["x-w3c-validator-errors"]
+                n = int(errors.split(" ")[0])
+                if n != 1:
+                    result += " (%s errors)" % n
+                else:
+                    result += " (%s error)" % n
+    else:
+        result += "unvalidatable: no X-W3C-Validator-Status"
+    return result
+
+text.i_love_the_w3c.argument = "link"
+
+# @@ filetype, site
+@service(text)
+def img(args):
+    "Search for an image on Google Image Search"
+    if not args.text:
+        return text.img.__doc__
+
+    response = google.image(phrase=args.text)
+
+    if args.maximum.get("lines", 1) > 1:
+        response += "\n"
+        arg = urllib.parse.quote(args.text)
+        response += "More: http://google.com/images?q=%s" % arg
+
+    return response
+
+@service(text)
+def ip_time(args):
+    "Show the current time guessed for the IP address given"
+    # @@ mix with database.timezones
+    if not args.text:
+        return text.ip_time.__doc__
+
+    return geo.timezone(ip=args.text)
+
+@service(text)
+def _len(args):
+    "Show the length of the input in characters and utf-8 bytes"
+    len_characters = len(args.text)
+    len_bytes = len(args.text.encode("utf-8"))
+    return "%s chars, %s bytes (utf-8)" % (len_characters, len_bytes)
+
+# text.len = _len
+
+@service(text)
+def leo(args):
+    "Search for a term in the LEO German Dictionary"
+    # @@ empty results are formatted weirdly
+    if not args.text:
+        return text.leo.__doc__
+
+    opt = word.leo(term=args.text)
+
+    if not opt.text.strip():
+        return "Nothing found at " + opt.url
+
+    return opt.text + " — " + opt.url
+
+@service(text)
+def mangle(args):
+    "Put a phrase through the multiple translation mangle"
+    if not args.text:
+        return text.mangle.__doc__
+
+    # import time
+    # @@ this should be in api
+    opt = duxlot.Storage()
+    opt.source = "en"
+    opt.text = args.text
+    for target in ("fr", "de", "es", "it", "ja", "en"): 
+        opt.target = target
+        opt = google.translate(**opt())
+
+        opt.text = opt.translation
+        opt.source = opt.target
+        time.sleep(1/3)
+    return opt.translation
+
+@service(text)
+def metar(args):
+    "Get a formatted METAR weather summary for an ICAO code"
+    if not args.text:
+        return text.metar.__doc__
+
+    return weather.metar_summary(icao=args.text)
+
+@service(text)
+def news(args):
+    "Search for a news article on Google News Search"
+    if not args.text:
+        return text.news.__doc__
+
+    response = google.news(phrase=args.text)
+
+    if args.maximum.get("lines", 1) > 1:
+        response += "\n"
+        arg = urllib.parse.quote(args.text)
+        response += "More: http://google.com/news?q=%s" % arg
+
+    return response
+
+@service(text)
+def npl(args):
+    "Display the current time from NPL's SNTP server"
+    # @@ database.timezones
+    opt = clock.npl()
+    return "%s - %s" % (opt.datetime, opt.server)
+
+@service(text)
+def o(args):
+    ":O"
+    return ":O"
+
+@service(text)
+def parse_irc_message(args):
+    "Parse a raw IRC message into structured data"
+    if not args.text:
+        return text.parse_irc_message.__doc__
+
+    octets = args.text.encode("utf-8")
+    o = irc.parse_message(octets=octets)
+    return str(o())
+
+@service(text)
+def ping(args):
+    "There is no ping command"
+    return text.ping.__doc__ + "; nor can this be construed as a response"
+
+# @@ show all the outputs
+@service(text)
+def pipe(args):
+    "Pipe textual commands together"
+    if not args.text:
+        return text.pipe.__doc__
+
+    services = text()
+    services = services.copy()
+    del services["name"]
+    del services["pipe"]
+
+    arg = args.text
+
+    flags = []
+    while True:
+        flag, arg = irc.optflag(arg=arg)
+        if flag is None:
+            break
+        flags.append(flag)
+
+    if not flags:
+        msg = "Commands should be given as colon-prefixed flags"
+        return msg + " e.g. :news :len Tony Blair"
+
+    limit = args.maximum.get("bytes", 360)
+
+    for flag in flags:
+        if not flag in services:
+            return "Can't use this command: %s" % flag
+ 
+        arg = services[flag](
+            text=arg,
+            maximum={
+                "bytes": limit,
+                "lines": 1
+            }
+        )
+
+    return arg
+
+@service(text)
+def _py(args):
+    "Evaluate a python expression using Google App Engine"
+    if not args.text:
+        return text.py.__doc__
+
+    url = "http://tumbolia.appspot.com/py/${args}"
+    line = services.query(url=url, arg=args.text)
+    if line:
+        return line[:510]
+    return "Sorry, no result!"
+
+@service(text)
+def rhymes(args):
+    "Show some perfect rhymes of a word"
+    if not args.text:
+        return text.rhymes.__doc__
+
+    return word.rhymes(word=args.text)
+
+@service(text)
+def search_trio(args):
+    "Search Google, Bing, and DuckDuckGo, and compare the results"
+    if not args.text:
+        return text.search_trio.__doc__
+
+    return search.trio(phrase=args.text)
+
+@service(text)
+def sleep_random(args):
+    "Sleep for a random number of seconds"
+    import random
+    s = random.choice([0, 5, 10, 15, 20])
+    time.sleep(s)
+    return "%s: slept for %s seconds" % (args.text, s)
+
+@service(text)
+def snack(args):
+    "Give the api a snack"
+    return ":)"
+
+@service(text)
+def snippets(args):
+    "Search for snippets using the Google API"
+    if not args.text:
+        return text.snippets.__doc__
+
+    snippets = google.search_api_snippets(phrase=args.text)
+    limit = args.maximum.get("bytes", 128)
+    limit = min(limit, 128)
+    return " / ".join(snippets)[:limit - 3] + "..."
+
+@service(text)
+def suggest(args):
+    "Get suggestions using Google Suggest"
+    if not args.text:
+        return text.suggest.__doc__
+
+    # @@ quote(arg).replace('+', '%2B')
+    url = "http://websitedev.de/temp-bin/suggest.pl?q=${args}"
+    line = services.query(url=url, arg=args.text)
+    if line:
+        return line[:510]
+    return "Sorry, no result!"
+
+@service(text)
+def t(args):
+    "Display the current date and time"
+    # @@ database.timezones
+
+    # ZONE FROM NICK
+    # @@
+    flags = []
+    arg = args.text
+    for attempt in range(2):
+        flag, arg = irc.optflag(arg=arg)
+        if flag is None:
+            break
+        flags.append(flag)
+
+    if len(flags) not in {0, 2}:
+        return "Error: Expected zero or two flags"
+
+    if flags:
+        offset, abbreviation = tuple(flags)
+        offset = int(offset)
+    else:
+        offset, abbreviation = 0, "UTC"
+    # /@@
+
+    if not arg:
+        fmt = "%d %b %Y, %H:%M:%S $TZ"
+
+        return clock.format_datetime(
+            format=fmt,
+            offset=offset,
+            tz=abbreviation
+        )
+
+    # @@ upper...
+    elif args.text.upper() in clock.timezones_data:
+        # @@ add the tz name?
+        return clock.timezone_datetime(tz=args.text.upper())
+
+    elif clock.data.regex_number.match(args.text):
+        offset = float(args.text) if ("." in args.text) else int(args.text)
+        return clock.offset_datetime(offset=offset)
+
+    elif clock.data.regex_zone.match(args.text):
+        return text.unix_date(**args())
+
+    return "Unknown format: %s" % args.text
+
+text.t.argument = "tz"
+
+@service(text)
+def text_commands(args):
+    "Show names of text commands"
+    names = [name for name in text() if name != "name"]
+    return ", ".join(sorted(names))
+
+@service(text)
+def thesaurus(args):
+    "Show some synonyms of a word"
+    if not args.text:
+        return text.thesaurus.__doc__
+
+    return word.thesaurus(word=args.text)
+
+@service(text)
+def _time(args):
+    "Display the current time in UTC"
+
+    # ZONE FROM NICK
+    # @@
+    flags = []
+    arg = args.text
+    for attempt in range(2):
+        flag, arg = irc.optflag(arg=arg)
+        if flag is None:
+            break
+        flags.append(flag)
+
+    if len(flags) not in {0, 2}:
+        return "Error: Expected zero or two flags"
+
+    if flags:
+        offset, abbreviation = tuple(flags)
+        offset = int(offset)
+    else:
+        offset, abbreviation = 0, "UTC"
+    # /@@
+
+    return clock.format_datetime(format="%H:%M:%S", offset=offset)
+
+text._time.argument = "tz"
+
+# @@ check for double spaces, etc.
+@service(text)
+def title(args):
+    "Get the title of a web page"
+    if not args.text:
+        return text.title.__doc__
+
+    url = args.text
+
+    # @@ make this a general utility function
+    if not "/" in url:
+        url = url + "/"
+    if not "://" in url:
+        url = "http://" + url
+
+    return web.title(url=url, follow=True)
+
+@service(text)
+def tock(args):
+    "Display the time from the USNO tock server"
+    # @@ database.timezones
+    opt = clock.tock()
+    return "\"%s\" - %s" % (opt.date, opt.server)
+
+# @@ could take a link
+@service(text)
+def tr(args):
+    "Translate text from one language to another"
+    if not args.text:
+        return text.tr.__doc__
+
+    opt = duxlot.Storage()
+    opt.source, arg = irc.optflag(arg=args.text)
+    opt.target, opt.text = irc.optflag(arg=arg)
+    opt = google.translate(**opt())
+    t = opt.translation[:-1] if opt.translation.endswith(".") else opt.translation
+    msg = "%s (%s » %s). translate.google.com"
+    return msg % (opt.translation, opt.source, opt.target)
+
+@service(text)
+def tw(args):
+    "Show a tweet"
+    if not args.text:
+        return "Give me a link, a username, or a tweet id"
+
+    def tweet(**kargs):
+        try: return twitter.tweet(**kargs)
+        except Error as err:
+            return str(err)
+
+    arg = args.text
+    if arg.startswith("@"):
+        arg = arg[1:]
+
+    if arg.isdigit():
+        tweet = tweet(id=arg)
+    elif regex_twitter_username.match(arg):
+        tweet = tweet(username=arg)
+    elif regex_twitter_link.match(arg):
+        tweet = tweet(url=arg)
+    else:
+        return "Give me a link, a username, or a tweet id"
+
+    return tweet
+
+text.tw.argument = "link"
+
+text.twitter = text.tw
+text.twitter.argument = "link"
+
+@service(text)
+def tz(args):
+    "Convert a time in one time zone to another"
+    if not args.text:
+        return text.tr.__doc__
+
+    def usage():
+        return "The format is: HH:MM[:SS] ZONE in ZONE"
+
+    if args.text.count(" ") == 3:
+        t, source_zone, verb, target_zone = args.text.split(" ", 3)
+    else:
+        return usage()
+
+    kargs = {"time": t, "source": source_zone, "target": target_zone}
+    conversion = clock.timezone_convert(**kargs)
+    if not "target_time" in conversion:
+        return usage()
+
+    source = "%s %s" % (conversion.source_time, conversion.source_name)
+    target = "%s %s" % (conversion.target_time, conversion.target_name)
+
+    return source + " = " + target
+
+@service(text)
+def u(args):
+    "Perform various unicode search functions"
+    if not args.text:
+        return text.u.__doc__
+
+    import re
+
+    flag, arg = irc.optflag(arg=args.text)
+
+    regex_digit = re.compile("[0-9]")
+    regex_hex = re.compile("(?i)^[0-9A-F]{2,6}$")
+    regex_codepoint = re.compile(r"(?i)^(U\+|\\u)[0-9A-F]{2,6}$")
+    regex_simple = re.compile(r"^[\x20-\x7E]+$")
+
+    if flag and (not arg):
+        return text.ubc(**args())
+    elif len(arg) == 1:
+        return text.ubc(**args())
+    elif regex_codepoint.match(arg):
+        return text.ubcp(**args())
+    elif regex_digit.search(arg) and regex_hex.match(arg):
+        return text.ubcp(**args())
+    elif not regex_simple.match(arg):
+        return text.ubc(**args())
+    else:
+        return text.ubn(**args())
+
+@service(text)
+def ubc(args):
+    "Give data about unicode characters"
+    if not args.text:
+        return text.ubc.__doc__
+
+    flag, arg = irc.optflag(arg=args.text)
+    if flag and (not arg):
+        flag, arg = None, args.text
+
+    kargs = {"characters": arg, "form": flag}
+    messages = unicode.by_character_formatted(**kargs)
+    return ", ".join(messages)
+
+@service(text)
+def ubcp(args):
+    "Search for a unicode character by hexadecimal codepoint"
+    if not args.text:
+        return text.ubcp.__doc__
+
+    flag, arg = irc.optflag(arg=args.text)
+    if not arg:
+        return "Need something to search for"
+
+    for prefix in ("U+", "u+", r"\u"):
+        if arg.startswith(prefix):
+            arg = arg[2:] # update if adding a different length above
+            break
+
+    codepoint, data = unicode.by_hexcp(hex=arg, categories=flag)
+    args = (codepoint, data["name"], data["display"], data["category"])
+    return "U+%s %s (%s) [%s]" % args
+
+@service(text)
+def ubn(args):
+    "Search for a unicode character by name"
+    if not args.text:
+        return text.ubn.__doc__
+
+    flag, arg = irc.optflag(arg=args.text)
+    if not arg:
+        return "Need something to search for"
+
+    result = unicode.by_name(search=arg, categories=flag)
+
+    def show(result):
+        weight, codepoint, data = result
+        weight = round(weight, 3)
+        args = (codepoint, data["name"], data["display"], data["category"])
+        return "U+%s %s (%s) [%s]" % args
+
+    first = result[0]
+    weight = first[0]
+
+    response = []
+
+    response.append(show(first))
+    if args.maximum.get("lines", 1) < 2:
+        return response[0]
+
+    if weight > 0.75:
+        for r in result[1:]:
+            response.append(show(r))
+    return "\n".join(response)
+
+@service(text)
+def unix_date(args):
+    "Show the date using the unix DATE(1) command"
+    # @@ database.timezones
+    if args.text:
+        return clock.unix_date(zone=args.text)
+    else:
+        return clock.unix_date()
+
+@service(text)
+def unixtime(args):
+    "Display the current unix epoch time"
+    return str(time.time())
+
+@service(text)
+def utc(args):
+    "Display the current date and time in UTC"
+    return clock.datetime_utc()
+
+@service(text)
+def version(args):
+    "Show duxlot and python version"
+    import sys
+
+    duxlot_version = general.duxlot_version()
+    python_version = sys.version.split(" ", 1)[0]
+    return "duxlot %s, and python %s" % (duxlot_version, python_version)
+
+@service(text)
+def w(args):
+    "Look up a word in Wiktionary"
+    if not args.text:
+        return "Wiktionary search: need a word to define"
+
+    article = word.wiktionary_article(word=args.text)
+    if not "definitions" in article:
+        return "Couldn't get any definitions for %s" % args.text
+
+    result = word.wiktionary_format(**article())
+    if len(result) < 150:
+        result = word.wiktionary_format(number=3, **article())
+    if len(result) < 150:
+        result = word.wiktionary_format(number=5, **article())
+
+    if len(result) > 300:
+        result = result[:295] + "[...]"
+    return result
+
+# @@ can this take a link?
+@service(text)
+def wa(args):
+    "Consult Wolfram|Alpha using a web service"
+    # 1 + 1 gives an error
+    if not args.text:
+        return text.wa.__doc__
+
+    flag, arg = irc.optflag(arg=args.text)
+
+    # @@ 1 + 1 doesn't work, doesn't recognise the +?
+    url = "http://tumbolia.appspot.com/wa/${args}"
+    line = services.query(url=url, arg=arg)
+
+    if flag is None:
+        if line:
+            line = html.decode_entities(html=line)
+            line = line.replace(r"\/", "/")
+            line = line.replace(r"\'", "'")
+            line = line.replace(";", "; ")
+            line = line.replace("  (", " (")
+            line = line.replace("~~ ", "~")
+            line = line.replace(", , ", ", ")
+            return line[:510]
+        else:
+            return "Sorry, no result!"
+    elif flag == "":
+        return str(list(sorted(response().keys())))
+    elif flag == ":":
+        return str(response())
+    else:
+        return response()[flag]
+
+@service(text)
+def wik(args):
+    "Search for an article on Wikipedia"
+    if not args.text:
+        return text.wik.__doc__
+
+    flag, arg = irc.optflag(arg=args.text)
+
+    try: article = wikipedia.article(term=arg, language=flag)
+    except Error as err:
+        return "Couldn't find an article. %s" % err
+
+    if "sentence" in article:
+        return '"%s" - %s' % (article.sentence, article.url)
+    else:
+        return "Couldn't get that article on Wikipedia"
+
+@service(text)
+def yi(args):
+    "Calculate whether it is currently yi in tavtime or not"
+    yi = clock.yi()
+    return "Yes, PARTAI!" if yi else "Not yet..."
 
 
 ### Module: Twitter ###

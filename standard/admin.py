@@ -6,6 +6,8 @@ import duxlot
 
 command = duxlot.command
 
+# @@ more admin- prefixes
+
 @command
 def admin(env):
     # this should be an administrative command
@@ -219,7 +221,8 @@ def administrators(options):
         permitted.add(owner)
     admins = options["admins"]
     if admins:
-        set.update(set(admins))
+        # set -> permitted should fix the bug dpk noticed
+        permitted.update(set(admins))
     return permitted
 
 @duxlot.builder

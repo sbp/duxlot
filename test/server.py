@@ -10,6 +10,12 @@ import socketserver
 import sys
 import time
 
+if not os.path.isfile("duxlot"):
+    print("Error: Not running in the duxlot directory")
+    sys.exit(1)
+
+sys.path[:0] = [os.getcwd()]
+
 # Save PEP 3122!
 if "." in __name__:
     from . import api
@@ -33,16 +39,28 @@ def test(test_function):
 
 # @@ quit from a test, then start a new instance
 
-@test
-def mysterious_empty_connection(conn):
-    ...
-
 # @test
 def test_timeout(conn):
     conn.handshake()
     conn.nowt()
 
-with open("data/tests.txt", encoding="utf-8") as f:
+@test
+def test_admin(conn):
+    conn.handshake()
+    conn.send(":admin01", "PRIVMSG", "#duxlot", ".prefix ^")
+    msg = conn.recv()
+    conn.equal(msg["command"], "PRIVMSG", "Not a PRVIMSG")
+
+    conn.send(":user", "PRIVMSG", "#duxlot", "^utc")
+    msg = conn.recv()
+    conn.equal(msg["command"], "PRIVMSG", "Not a PRVIMSG")
+
+    # Change it back for other tests
+    conn.send(":admin01", "PRIVMSG", "#duxlot", "^prefix .")
+    msg = conn.recv()
+    conn.equal(msg["command"], "PRIVMSG", "Not a PRVIMSG")
+
+with open("test/combined.txt", encoding="utf-8") as f:
     text = f.read()
 
 for lines in text.split("\n\n"):
@@ -50,7 +68,7 @@ for lines in text.split("\n\n"):
         lines = lines.rstrip("\n")
         if not lines:
             return
-        # if not lines.startswith(".in"):
+        # if not lines.startswith(".ab"):
         #     return
 
         # @@ expected
@@ -105,16 +123,22 @@ def test_maximum_processes(conn):
         time.sleep(1)
     time.sleep(30)
 
+@test
+def test_hang(conn):
+    conn.handshake()
+    conn.send(":owner!~owner@localhost", "PRIVMSG", "duxlot", ".test-hang")
+    time.sleep(1)
+
 # @test
-def quit(conn):
+def quit1(conn):
     conn.handshake()
     conn.send(":owner!~owner@localhost", "PRIVMSG", "duxlot", ".quit")
 
 @test
-def quit2(conn):
+def quit(conn):
     conn.send(":localhost", "NOTICE", "*", "Welcome!")
     conn.send(":owner!~owner@localhost", "PRIVMSG", "duxlot", ".quit")
-    time.sleep(3)
+    time.sleep(2)
 
 class Test(socketserver.StreamRequestHandler):
     timeout = 6

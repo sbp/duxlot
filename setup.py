@@ -22,14 +22,11 @@ README = r"""
 Duxlot_ is a new IRC bot created in 2012 by `Sean B. Palmer`_, the maker of the
 popular Phenny_. Features include a fast multiprocess based architecture,
 modularity, and ease of use. Duxlot has no dependencies except Python3, and will
-even work without having to be installed as as package.
+even work without having to be installed as as package. Source on Github, `@sbp/duxlot`_.
 
 .. _Duxlot: http://inamidst.com/duxlot/
 .. _Sean B. Palmer: http://inamidst.com/sbp/
 .. _Phenny: http://inamidst.com/phenny/
-
-Source on Github, `@sbp/duxlot`_.
-
 .. _@sbp/duxlot: https://github.com/sbp/duxlot
 
     **WARNING:** This is an early, pre-release alpha version of Duxlot. The API
@@ -40,9 +37,7 @@ Install
 
 You may use **either** of these methods:
 
-*	Download the latest source.
-
-	Unpack it and enter ``duxlot-%s/``
+*	Download the `latest source`_. Unpack it and enter ``duxlot-%s/``
 
 	**Optionally** install using::
 
@@ -52,13 +47,14 @@ You may use **either** of these methods:
 
 		pip install duxlot
 
+.. _latest source: #downloads
 .. _pip: http://pypi.python.org/pypi/pip
 
 **Optionally** use virtualenv_ for either of these methods.
 
 .. _virtualenv: http://www.virtualenv.org/en/latest/index.html#installation
 
-You can now use the ``duxlot`` script—either the one in the package that you downloaded, or the one that should be on your ``$PATH`` from installation.
+You can now use the ``duxlot`` script—either the one in the package that you downloaded, or the one that should be on your ``$PATH`` from installation. Try ``duxlot --usage``.
 
 """ % version
 
@@ -74,11 +70,16 @@ distutils.core.setup(
     long_description=README,
     packages=["duxlot"],
     package_dir={"duxlot": ""},
-    package_data={"duxlot": ["README.rst", "data/*.*", "standard/*.*"]},
+    package_data={"duxlot": [
+        "README.rst", "data/*", "standard/*", "test/*"
+    ]},
     scripts=["duxlot"],
-    platforms=[
+    platforms="BSD, Linux, OS X",
+    classifiers=[
+        "License :: OSI Approved :: Apache Software License",
         "Operating System :: MacOS :: MacOS X",
-        "Operating System :: POSIX"
+        "Operating System :: POSIX",
+        "Programming Language :: Python :: 3"
     ],
-    license="License :: OSI Approved :: Apache Software License"
+    license="Apache License 2.0"
 )

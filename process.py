@@ -17,6 +17,13 @@ else:
 debug = storage.output.write
 del storage
 
+pids = set()
+
+def killall():
+    for pid in pids:
+        try: os.kill(pid, signal.SIGKILL)
+        except: ...
+
 class Process(object):
     def __init__(self, name):
         self.name = name
@@ -40,10 +47,15 @@ class Process(object):
             return
 
         def wrapper(self):
-            self.inactive.clear()
+            signal.signal(signal.SIGTERM, signal.SIG_DFL)
             signal.signal(signal.SIGINT, signal.SIG_IGN)
-            self.function(self.storage)
-            self.inactive.set()
+            # This must be IGN
+            signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+
+            self.inactive.clear()
+            try: self.function(self.storage)
+            finally:
+                self.inactive.set()
 
         self.process = multiprocessing.Process(
             target=wrapper,
@@ -52,6 +64,7 @@ class Process(object):
         )
 
         self.process.start()
+        pids.add(self.process.pid)
         self.started = time.time()
 
     def duration(self):
@@ -67,29 +80,32 @@ class Process(object):
     def finish(self):
         ...
 
-    def stop(self, finish=False, timeout=6):
+    def stop(self, finish=False, timeout=2):
         if finish is True:
             self.finish()
 
-        if self.active:
+        if self.active and self.process:
             try: self.process.join(timeout / 2)
             except AssertionError:
-                debug("Got join() error in", self.name)
-                self.inactive.wait(timeout)
+                debug("Error: Child process attempted to join itself")
+                debug("Bootleg moonshine code accidentally been activated")
+
             self.inactive.wait(timeout / 2)
 
             if self.active:
-                debug("Sending SIGTERM to process:%s" % self.name)
-                debug("And self.process is...", self.process)
-                try: self.process.terminate()
-                except AttributeError:
-                    debug("Got attribute error in", self.name)
-                self.terminated = True
+                debug("Sending SIGKILL to process:%s" % self.name)
 
-            # debug("Had to SIGTERM, exiting")
-            # import sys
-            # sys.exit()
+                try: os.kill(self.process.pid, signal.SIGKILL)
+                except OSError:
+                    ...
+                else:
+                    # @@ Ought to exit everything here
+                    self.terminated = True
 
+        if self.process is not None:
+            pids.discard(self.process.pid)
+
+    # @@ Unused?
     def terminate(self):
         try: self.process.terminate()
         except Exception as err:
@@ -152,6 +168,7 @@ class Processes(object):
 
     def start(self):
         "Start all processes"
+        # @@ lock them so they can only be started once
         self[self.socket].start()
 
         self.resume()
@@ -179,7 +196,7 @@ class Processes(object):
     def resume(self):
         "Start all queue processes"
         for process_name in self.queues:
-            debug("Calling start on", process_name)
+            # debug("Calling start on", process_name)
             self[process_name].start()
 
     def flush(self):
@@ -235,34 +252,43 @@ class Commands(object):
                 yield process
 
     def spawn(self, function, storage):
-        if self.active.value >= 3:
+        if self.active.value >= 18:
             debug("Command failed: too many active processes")
             return False
 
         def process(self, name, function, storage):
+            # global pids
+
             debug(name, "starting")
             with self.lock:
                 self.active.value += 1
                 created = self.known[name][0]
                 self.known[name] = [created, time.time()]
 
-            def exit(signum, frame):
-                with self.lock:
-                    self.active.value -= 1
-                    del self.known[name]
-                    del self.pid[name]
-                sys.exit(1)
-            # This MUST be set for self.terminate_command to work
-            # Otherwise it propagates up to process:main
-            signal.signal(signal.SIGTERM, exit)
-            signal.signal(signal.SIGINT, signal.SIG_IGN)
-            try: function(storage)
-            finally:
-                with self.lock:
+            def cleanup():
+                try: 
                     if name in self.known:
                         self.active.value -= 1
                         del self.known[name]
                         del self.pid[name]
+                except IOError:
+                    ...
+
+            def exit(signum, frame):
+                with self.lock:
+                    cleanup()
+                os._exit(1)
+            # This MUST be set for self.terminate_command to work
+            # Otherwise it propagates up to process:main
+            signal.signal(signal.SIGTERM, signal.SIG_DFL) # exit)
+            signal.signal(signal.SIGINT, signal.SIG_IGN)
+            # This must be IGN
+            signal.signal(signal.SIGUSR1, signal.SIG_IGN)
+
+            try: function(storage)
+            finally:
+                with self.lock:
+                    cleanup()
                 debug(name, "stopping")
 
         with self.lock:
@@ -277,6 +303,7 @@ class Commands(object):
         )
         p.start()
         self.pid[name] = p.pid
+        pids.add(p.pid)
 
         # time.time() + 60
         # self.schedule
@@ -286,13 +313,18 @@ class Commands(object):
         pid = self.pid.get(name)
         if pid:
             # There must be a signal handler set in the process
-            debug("Sending SIGTERM to", name)
-            try: os.kill(pid, signal.SIGTERM)
+            debug("Sending SIGKILL to", name)
+            try: os.kill(pid, signal.SIGKILL)
             except Exception as err:
+                debug("Error:", err)
                 return False
+
+            pids.discard(pid)
+            del self.known[name]
+            del self.pid[name]
             return True
 
-        debug("Couldn't SIGTERM %s!" % name)
+        debug("Couldn't SIGKILL %s!" % name)
         return False
 
     def collect(self, timeout=60):
