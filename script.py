@@ -4,8 +4,9 @@
 
 import sys
 
-if sys.version_info < (3, 2):
-    print("Error: Requires python 3.2 or later")
+# Require 3.2.2 because of http://bugs.python.org/issue12576
+if sys.version_info < (3, 2, 2):
+    print("Error: Requires python 3.2.2 or later")
     sys.exit(1)
 
 import argparse

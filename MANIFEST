@@ -9,6 +9,7 @@ duxlot
 duxlot.py
 functions.py
 irc.py
+options.py
 prepare.py
 process.py
 script.py
@@ -19,10 +20,12 @@ data/unicodedata.pickle
 data/version
 standard/admin.py
 standard/core.py
-standard/glue.py
-standard/standard.py
+standard/start.py
+standard/text.py
+test/client
 test/combined.txt
 test/script.sh
 test/script.txt
+test/server
 test/server.py
 test/test.json

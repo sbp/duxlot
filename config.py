@@ -11,6 +11,12 @@ if "." in __name__:
 else:
     import storage
 
+# @@ default.py
+
+# def call(function):
+#     function()
+#     del globals()[function.__name__]
+
 def aliases_create():
     import sys
     if not directory.exists():
@@ -228,8 +234,8 @@ or even delete the file.
 
 Learn more about utf-8 and mojibake here:
 
-https://en.wikipedia.org/wiki/UTF-8
-https://en.wikipedia.org/wiki/Mojibake
+    https://en.wikipedia.org/wiki/UTF-8
+    https://en.wikipedia.org/wiki/Mojibake
 
 (Error Name: ALIASES_NOT_UTF8)
 """ % reduceuser(aliases.path),
@@ -285,7 +291,8 @@ The following configuration base is not usable:
     %s
 
 This usually happens when your configuration file is called just ".json"
-instead of having a name before the extension, such as "config.json". The configuration file duxlot tried to use is:
+instead of having a name before the extension, such as "config.json". The
+configuration file duxlot tried to use is:
 
     %s
 
@@ -405,41 +412,7 @@ These options are reserved by duxlot for internal use. Please remove this
 option from your configuration file, and try again.
 
 (Error Name: OPTION_DISALLOWED)
-""", # args: 1
-
-    "OPTION_UNKNOWN": ##########
-"""
-Your configuration file contains an unknown option:
-
-    %s
-
-This is probably a typo for a known option. You can check the list of available
-options by running:
-
-    duxlot options
-
-(Error Name: OPTION_UNKNOWN)
-""", # args: 1
-
-    "VALUE_DISALLOWED": ##########
-"""
-Your configuration file contains a disallowed value:
-
-    %s
-
-The values for the "%s" option must be one of the following types:
-
-    %s
-
-For more information on JSON and types, consult the following guides:
-
-http://en.wikipedia.org/wiki/JSON
-http://guide.couchdb.org/draft/json.html
-
-You may also ask the duxlot maintainer for help.
-
-(Error Name: VALUE_DISALLOWED)
-""" # args: 3
+""" # args: 1
 })
 
 def exists(path):
@@ -457,7 +430,7 @@ def fail(explanation):
     sys.stderr.write(explanation.lstrip())
     sys.exit(1)
 
-def info(name, validate=True):
+def info(name):
     if name is None:
         if not exists(default):
             create()
@@ -470,96 +443,19 @@ def info(name, validate=True):
 
     config_data = read(name)
 
-    if validate is True:
-        globals()["validate"](config_data) # @@ ffffffffu-
-
     # @@ Could be a FrozenStorage object
     return name, config_base, config_data
 
 def random_nick():
     import random
-    digits = "0123456789"
-    return "duxlot" + "".join(random.choice(digits) for n in range(3))
+    return "duxlot%03i" % random.randrange(1000)
 
 def minimal():
     return {
-        "channels": ["#duxlot-test"],
+        "address": "irc.freenode.net:6667",
         "nick": random_nick(),
-        "port": 6667,
-        "server": "irc.freenode.net"
+        "start-channels": ["#duxlot-test"]
     }
-
-options = {
-    # @@ store, make use of, module data? (IRC, Core, General)
-    # @@ options that control script.py
-    "admins": (None, {list}, True, # IRC
-        "Nicks of people allowed to use administrative commands"),
-
-    "adminchans": ([], {list}, False, # @@
-        "List of channels where administrative commands are allowed"),
-
-    "channels": (None, {list}, True, # Core
-        "List of channels to join"),
-
-    "database": ("$(BASE).database", {str}, False, # IRC
-        "Base to use for database information"), # @@ PID file?
-
-    "flood": (False, {bool}, False, # IRC
-        "Bypass the built in flood protection"),
-
-    "nick": (random_nick(), {str}, True, # IRC, Core, General
-        "Nick for the bot to use for itself"),
-
-    "nickserv": (None, {str}, True, # Core
-        "Pass to send to NickServ services bot"),
-
-    "owner": (None, {str}, True, # IRC, General
-        "Nick of the owner of the bot, allowed to use owner commands"),
-
-    "password": (None, {str}, False, # Core
-        "Password to be sent to the server"),
-
-    "port": (6667, {int}, True, # IRC
-        "The port of the server to connect to"),
-
-    "prefix": (".", {str}, True, # IRC, General
-        "Default prefix used across all channels for commands"),
-
-    "prefixes": ({}, {dict}, True, # IRC, General
-        "Mapping of channels to their local command prefix"),
-
-    "private": ([], {list}, True, # General
-        "Private channels where seen data should not be recorded"),
-
-    "server": ("irc.freenode.net", {str}, True, # IRC
-        "The hostname of the server to connect to"),
-
-    "ssl": (False, {bool}, False, # IRC
-        "Whether or not to use a *NON-VALIDATED* SSL connection"),
-
-    "standard": ("*", {list, str}, False, # IRC
-        "Standard modules to import"),
-
-    "user": ([], {list}, False, # IRC
-        "Directories of user modules to import"),
-
-    "zoneinfo": ("/usr/share/zoneinfo", {str}, False, # General
-        "Location of the IETF Zoneinfo database hierarchy")
-}
-
-# @@ Ugh, these variables leak out of scope
-for name, (option_default, types, p, documentation) in options.items():
-    options[name] = storage.FrozenStorage({
-        "default": option_default,
-        "types": types,
-        "public": p,
-        "documentation": documentation
-    })
-
-del name
-del option_default
-del types
-del documentation
 
 def pretty(data):
     return json.dumps(data, sort_keys=True, indent=4)
@@ -587,30 +483,7 @@ def read(path):
 
     data["__options__"] = set(data.keys())
 
-    for name in options:
-        if not (name in data):
-            data[name] = options[name].default
-
     return data
-
-def validate(data):
-    for option, value in data.items():
-        if not option in data["__options__"]:
-            # @@ how might this happen?
-            # private options like __options__?
-            continue
-
-        if option.startswith("@"):
-            continue
-
-        if not option in options:
-            fail(error.OPTION_UNKNOWN % option)
-
-        if not type(value) in options[option].types:
-            # print(option, value, type(value))
-            args = (value, option, options[option].types)
-            fail(error.VALUE_DISALLOWED % args)
-    return True
 
 def write(path, data, pretty=False):
     if "__options__" in data:

@@ -18,15 +18,14 @@ dist:
 .PHONY: edit
 edit:
 	@## Edit all files in the duxlot source
-	edit *.* standard/*.* data/*.* test/*.*
+	edit *.py duxlot standard/*.* test/*.*
 
 .PHONY: publish
 publish:
 	@## Publish a version to pypi and github
 	bash publish.sh
 
-.PHONY: server
-server:
-	@## Test server
-	python3 test/server.py &
-	./duxlot start test/test.json
+.PHONY: update
+update:
+	@## Update from source directory
+	# @@

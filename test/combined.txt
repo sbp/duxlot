@@ -37,7 +37,7 @@ env: <[a-z, ]+>
 .bing reddit
 http://www.reddit.com/
 
-.bing nzqqqvzmvfaefacvz$(BOT)
+.bing "$(BOT)xzncxzncvxnvcxnv"
 No results found
 
 .bytes ûôß
@@ -74,7 +74,7 @@ utf-8 (Content-Type)
 http://www.reddit.com/
 
 .gc gomboc
-<[0-9,]+> (api), <[0-9,]+> (vend), <[0-9,]+> (end), <[0-9,]+> (site) - gomboc
+gomboc: <[0-9,]+> (api), <[0-9,]+> (vend), <[0-9,]+> (end), <[0-9,]+> (site)
 
 .gcs [a b c] "d e f" g h i
 [api] <.> (<[0-9,]+>), <.> (<[0-9,]+>), <.> (<[0-9,]+>), a b c (<[0-9,]+>), "d e f" (<[0-9,]+>)
@@ -166,6 +166,9 @@ Perhaps up Pompeii: <.{16,}>
 .t
 <[0-9]{1,2} [A-Za-z]{3} [0-9]{4}, [0-9:]{8}> UTC
 
+.t Europe/London
+<.*[0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} (UTC|GMT|BST)>
+
 .tell
 : Send a message to another user
 
@@ -176,7 +179,7 @@ Perhaps up Pompeii: <.{16,}>
 : You can tell yourself that
 
 .test-error
-Script Error: <[^,]+>, in standard.py:<[0-9]+> at test_error(...) 1/0
+Script Error: <[^,]+>, in core.py:<[0-9]+> at test_error(...) 1/0
 
 .time
 <[0-9]{2}:[0-9]{2}:[0-9]{2}>

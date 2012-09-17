@@ -17,7 +17,9 @@ def zone_from_nick(env, nick):
         return 0, "UTC"
     else:
         import os.path
-        zoneinfo = env.options["zoneinfo"]
+        if not ("core" in env.options.completed): # @@ .groups
+            return 0, "UTC"
+        zoneinfo = env.options("core-zoneinfo")
         zonefile = os.path.join(zoneinfo, tz)
 
         try: opt = api.clock.zoneinfo_offset(filename=zonefile)

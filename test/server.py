@@ -68,7 +68,7 @@ for lines in text.split("\n\n"):
         lines = lines.rstrip("\n")
         if not lines:
             return
-        # if not lines.startswith(".ab"):
+        # if not lines.startswith(".bing"):
         #     return
 
         # @@ expected

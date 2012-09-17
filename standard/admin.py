@@ -15,6 +15,20 @@ def admin(env):
     ...
 
 @command
+def channel_prefix(env):
+    "Set the command prefix for a specific channel"
+    if env.admin:
+        if not (" " in env.arg):
+            return env.reply("Usage: channel-prefix #channel <pfx>")
+
+        channel, prefix = env.arg.split(" ", 1)
+        channels = env.options("prefix", "channels")
+        channels[channel] = prefix
+
+        env.options.put("prefix", channels)
+        env.reply("Set prefix for %s to %r" % (channel, prefix))
+
+@command
 def commands(env):
     "Output all commands and descriptions to a local file"
     if env.owner:
@@ -56,7 +70,10 @@ def database_load(env):
 def join(env):
     "Command the bot to join a new channel"
     if env.admin:
-        env.send("JOIN", env.arg)
+        channels = env.options("start channels")
+        if not (env.arg in channels):
+            channels.append(env.arg)
+            env.options.put("start channels", channels)
 
 @command
 def me(env):
@@ -88,43 +105,40 @@ def noted_links(env):
 @command
 def part(env):
     "Command the bot to part a channel"
+    # @@ do proper env.options stuff!
     if env.admin:
         env.send("PART", env.arg)
 
 @command
 def prefix(env):
-    "Change the prefix used before named commands"
+    "Set the command prefix for all channels"
     if env.admin:
-        if env.arg.startswith("#") and (" " in env.arg):
-            channel, prefix = env.arg.split(" ", 1)
-            # if not ("prefixes" in env.options["__options__"]):
-            #     env.options["prefixes"] = {}
-            prefixes = env.options["prefixes"]
-            prefixes[channel] = prefix
-            env.options["prefixes"] = prefixes
-            env.reply("Okay, set prefix to \"%s\" for %s" % (prefix, channel))
+        current = env.options("prefix")
+        if isinstance(current, str):
+            env.options.put("prefix", env.arg)
+        elif isinstance(current, list):
+            current[""] = env.arg
+            env.options.put("prefix", current)
         else:
-            env.options["prefix"] = env.arg
-            env.reply("Okay, set prefix to \"%s\"" % env.arg)
-    elif env.arg:
-        env.reply("Sorry, that's an admin-only feature!")
+            return env.reply("Error: prefix data is corrupt")
+
+        env.reply("Set prefix for all channels to %r" % env.arg)
 
 @command
 def prefixes(env):
     "Show all prefixes used across all channels for all named commands"
     if env.admin:
-        prefixes = env.options["prefixes"]
-        prefixes["*"] = env.options["prefix"]
-        p = ["%s: \"%s\"" % (a, b) for a, b in sorted(prefixes.items())]
+        prefixes = env.options("prefix", "channels")
+        prefixes = sorted(prefixes.items())
+        p = ["%r %s" % (b, ("on " + a) if a else "by default")
+            for a, b in prefixes]
         env.reply(", ".join(p))
-    else:
-        env.reply("Sorry, that's an admin-only feature!")
 
 @command
 def processes(env):
     "Show the number of processes running, and their names"
     if env.admin: 
-        env.schedule((0, "processes", env.sender, env.nick))
+        env.task("processes", env.sender, env.nick)
     else:
         env.reply("That's an admin-only feature")
         # or, Ask an admin to do that
@@ -135,7 +149,7 @@ def processes(env):
 def quit(env):
     "Request the bot to quit from the server and exit"
     if env.credentials("owner", "adminchan"):
-        env.schedule((0, "quit", env.nick))
+        env.task("quit", env.nick)
 
 @command
 def reload2(env):
@@ -145,7 +159,7 @@ def reload2(env):
         # could send reloading first, then join send queue
         env.reply("Okay, reloading...")
         env.sent()
-        env.schedule((0, "reload", env.sender, env.nick))
+        env.task("reload", env.sender, env.nick)
     else:
         env.reply("That's an admin-only feature")
         # or, Ask an admin to do that
@@ -154,7 +168,7 @@ def reload2(env):
 def restart(env):
     "Restart the bot"
     if env.owner:
-        env.schedule((0, "restart",))
+        env.task("restart")
 
 @command
 def service(env):
@@ -199,6 +213,11 @@ def update_unicode_data(env):
         else:
             env.reply("Done. You may now reload")
 
+@command
+def visit(env):
+    "Command the bot to join a new channel"
+    env.send("JOIN", env.arg)
+
 ### Events ###
 
 # 433 (Nickname already in use)
@@ -209,28 +228,27 @@ def nick_error2(env):
         nick = env.message["parameters"][1]
         error = "Somebody tried to change my nick to %s," % nick
         error += " but that nick is already in use"
-        env.msg(env.options["owner"], error)
+        env.msg(env.options("admin-owner"), error)
 
 ### Builders ###
 
 # used by create_input
 def administrators(options):
     permitted = set()
-    owner = options["owner"]
+    owner = options("admin-owner")
     if owner:
         permitted.add(owner)
-    admins = options["admins"]
+    admins = options("admin-users")
     if admins:
-        # set -> permitted should fix the bug dpk noticed
         permitted.update(set(admins))
     return permitted
 
 @duxlot.builder
 def build_admin(env):
     if env.event == "PRIVMSG":
-        env.owner = env.nick == env.options["owner"]
+        env.owner = env.nick == env.options("admin-owner")
         env.admin = env.nick in administrators(env.options) # @@!
-        env.adminchan = env.sender in env.options["adminchans"]
+        env.adminchan = env.sender in env.options("admin-channels")
     
         def credentials(person, place):
             person_okay = {
@@ -249,3 +267,27 @@ def build_admin(env):
         env.credentials = credentials
 
     return env
+
+@duxlot.startup
+def startup(safe):
+    if "admin" in safe.options.completed:
+        return
+
+    group = safe.options.group
+    option = safe.options.option
+
+    @group("admin")
+    class channels(option):
+        default = []
+        types = {list}
+
+    @group("admin")
+    class owner(option):
+        ...
+
+    @group("admin")
+    class users(option):
+        default = []
+        types = {list}
+
+    safe.options.complete("admin")

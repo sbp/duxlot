@@ -30,6 +30,8 @@ def copy(a, b): # or b, a...
 class Error(Exception):
     ...
 
+# @@ pre-wrapper for api.text services?
+
 def service(collection):
     def decorate(function):
         def decorated(**kargs):
@@ -1106,6 +1108,7 @@ text.calc = text.c
 @service(text)
 def chars(args):
     "Unicode characters grep" # @@ better __doc__ string
+    # @@ Silently fails when a disallowed flag is given!
     if not args.text:
         return text.chars.__doc__
 
@@ -1239,11 +1242,11 @@ def gc(args):
     flag, arg = irc.optflag(arg=args.text)
     count = google.count(phrase=arg, method=flag)
 
-    if flag in {None, "", "*", "all"}:
-        # @@ only add the arg if there's been another recent gc
-        return "%s - %s" % (count, arg)
-    else:
-        return "%s: %s" % (arg, count)
+    # if flag in {None, "", "*", "all"}:
+    #     # @@ only add the arg if there's been another recent gc
+    #     return "%s - %s" % (count, arg)
+    # else:
+    return "%s: %s" % (arg, count)
 
 @service(text)
 def gcs(args):
@@ -1603,18 +1606,18 @@ def t(args):
         )
 
     # @@ upper...
-    elif args.text.upper() in clock.timezones_data:
+    elif arg.upper() in clock.timezones_data:
         # @@ add the tz name?
-        return clock.timezone_datetime(tz=args.text.upper())
+        return clock.timezone_datetime(tz=arg.upper())
 
-    elif clock.data.regex_number.match(args.text):
-        offset = float(args.text) if ("." in args.text) else int(args.text)
+    elif clock.data.regex_number.match(arg):
+        offset = float(arg) if ("." in arg) else int(arg)
         return clock.offset_datetime(offset=offset)
 
-    elif clock.data.regex_zone.match(args.text):
-        return text.unix_date(**args())
+    elif clock.data.regex_zone.match(arg):
+        return text.unix_date(text=arg)
 
-    return "Unknown format: %s" % args.text
+    return "Unknown format: %s" % arg
 
 text.t.argument = "tz"
 

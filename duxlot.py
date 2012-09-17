@@ -4,11 +4,14 @@
 
 path = None
 
+# @@ the globals from a function method
+
 if "__file__" in vars():
     if __file__:
         import os.path
 
         path = os.path.abspath(__file__)
+        path = os.path.realpath(path)
         path = os.path.dirname(path)
 
         del os

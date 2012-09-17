@@ -10,6 +10,8 @@ echo In $PWD
 # @@ check diff-not-done
 # @@ make diff
 
+# @@ check that python3 setup.py --help works, first!
+
 echo Updating version number
 python3 -c 'import api; print(api.version_number())' > data/version
 DUXLOT_VERSION=$(cat data/version)

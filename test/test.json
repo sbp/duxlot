@@ -1,9 +1,8 @@
 {
-    "server": "localhost",
-    "port": 61070,
+    "address": "localhost:61070",
     "nick": "duxlot",
-    "channels": ["#duxlot"],
-    "owner": "owner",
-    "admins": ["admin01", "admin02"],
+    "start-channels": ["#duxlot"],
+    "admin-owner": "owner",
+    "admin-users": ["admin01", "admin02"],
     "flood": true
 }

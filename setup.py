@@ -10,19 +10,21 @@ import distutils.core
 
 import api
 
-if sys.version_info < (3, 2):
-    print("Error: Requires python 3.2 or later", file=sys.stderr)
+# Require 3.2.2 because of http://bugs.python.org/issue12576
+if sys.version_info < (3, 2, 2):
+    print("Error: Requires python 3.2.2 or later", file=sys.stderr)
     sys.exit(1)
 
 with open(os.path.join("data", "version"), encoding="ascii") as f:
     version = f.read()
     version = version.rstrip()
 
-README = r"""
+README = r"""\
 Duxlot_ is a new IRC bot created in 2012 by `Sean B. Palmer`_, the maker of the
 popular Phenny_. Features include a fast multiprocess based architecture,
-modularity, and ease of use. Duxlot has no dependencies except Python3, and will
-even work without having to be installed as as package. Source on Github, `@sbp/duxlot`_.
+modularity, and ease of use. Duxlot has no dependencies except Python3, and
+will even work without having to be installed as as package. Source on Github,
+`@sbp/duxlot`_.
 
 .. _Duxlot: http://inamidst.com/duxlot/
 .. _Sean B. Palmer: http://inamidst.com/sbp/
@@ -37,15 +39,15 @@ Install
 
 You may use **either** of these methods:
 
-*	Download the `latest source`_. Unpack it and enter ``duxlot-%s/``
+*   Download the `latest source`_. Unpack it and enter ``duxlot-%s/``
 
-	**Optionally** install using::
+    **Optionally** install using::
 
-		python3 setup.py install
+        python3 setup.py install
 
-*	Install using pip_::
+*   Install using pip_::
 
-		pip install duxlot
+        pip install duxlot
 
 .. _latest source: #downloads
 .. _pip: http://pypi.python.org/pypi/pip
@@ -54,32 +56,36 @@ You may use **either** of these methods:
 
 .. _virtualenv: http://www.virtualenv.org/en/latest/index.html#installation
 
-You can now use the ``duxlot`` script—either the one in the package that you downloaded, or the one that should be on your ``$PATH`` from installation. Try ``duxlot --usage``.
-
+You can now use the ``duxlot`` script—either the one in the package that you
+downloaded, or the one that should be on your ``$PATH`` from installation. Try
+``duxlot --help``.
 """ % version
 
 # http://stackoverflow.com/questions/4384796
 # http://packages.python.org/distribute/
 
-distutils.core.setup(
-    name="duxlot",
-    version=version,
-    author="Sean B. Palmer",
-    url="http://inamidst.com/duxlot/",
-    description="IRC bot and data suite, by the maker of phenny",
-    long_description=README,
-    packages=["duxlot"],
-    package_dir={"duxlot": ""},
-    package_data={"duxlot": [
-        "README.rst", "data/*", "standard/*", "test/*"
-    ]},
-    scripts=["duxlot"],
-    platforms="BSD, Linux, OS X",
-    classifiers=[
-        "License :: OSI Approved :: Apache Software License",
-        "Operating System :: MacOS :: MacOS X",
-        "Operating System :: POSIX",
-        "Programming Language :: Python :: 3"
-    ],
-    license="Apache License 2.0"
-)
+if __name__ == "__main__":
+    distutils.core.setup(
+        name="duxlot",
+        version=version,
+        author="Sean B. Palmer",
+        url="http://inamidst.com/duxlot/",
+        description="IRC bot and data suite, by the maker of phenny",
+        long_description=README,
+        packages=["duxlot"],
+        package_dir={"duxlot": ""},
+        package_data={"duxlot": [
+            "README.rst", "data/*", "standard/*", "test/*"
+        ]},
+        scripts=["duxlot"],
+        # @@ pypi changes ", " to "," in platforms, removing spaces
+        # Could try using an nbsp, perhaps
+        platforms="Linux and OS X",
+        classifiers=[
+            "License :: OSI Approved :: Apache Software License",
+            "Operating System :: MacOS :: MacOS X",
+            "Operating System :: POSIX",
+            "Programming Language :: Python :: 3"
+        ],
+        license="Apache License 2.0"
+    )

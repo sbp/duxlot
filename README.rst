@@ -18,17 +18,17 @@ Get `Python 3.2`_ or later.
 
 You may use **either** of these methods:
 
-*	Download the latest source:
+*   Download the latest source:
 
-		`duxlot-0.9.15-1555.tar.bz2`_
+        `duxlot-0.9.17-2033.tar.bz2`_
 
-	Unpack it and enter ``duxlot-0.9.15-1555/``
+    Unpack it and enter ``duxlot-0.9.17-2033/``
 
-	**Optionally** install using::
+    **Optionally** install using::
 
-		python3 setup.py install
+        python3 setup.py install
 
-.. _duxlot-0.9.15-1555.tar.bz2: http://pypi.python.org/packages/source/d/duxlot/duxlot-0.9.15-1555.tar.bz2
+.. _duxlot-0.9.17-2033.tar.bz2: http://pypi.python.org/packages/source/d/duxlot/duxlot-0.9.17-2033.tar.bz2
 
 *	Install from pypi_ using pip_::
 
@@ -96,16 +96,19 @@ Options
 
 These are the allowed option fields for the configuration file:
 
-:admins: Nicks of people allowed to use administrative commands
-:channels: List of channels to join
+:address: Server to connect to, as "[ssl ]<hostname>[:<port>]"
 :nick: Nick for the bot to use for itself
-:nickserv: Pass to send to NickServ services bot
-:owner: Nick of the owner of the bot, allowed to use owner commands
-:port: The port of the server to connect to
 :prefix: Default prefix used across all channels for commands
-:prefixes: Mapping of channels to their local command prefix
-:private: Private channels where seen data should not be recorded
-:server: The hostname of the server to connect to
+
+:admin-channels: Channels in which some admin commands can be used
+:admin-owner: Owner of the bot, allowed to use owner commands
+:admin-users: Users who are allowed to use admin commands
+
+:core-private: Private channels where seen data should not be recorded
+
+:start-channels: List of channels to join on connecting to the server
+:start-nickserv: Password to send to the NickServ services bot
+:start-password: Password to send to the server
 
 Story
 -----

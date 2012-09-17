@@ -18,9 +18,11 @@ import duxlot
 # Save PEP 3122!
 if "." in __name__:
     from . import api
+    from . import options
     from . import process
 else:
     import api
+    import options
     import process
 
 # @@ Could move this to storage.filesystem.modules(directory)
@@ -51,8 +53,8 @@ class Client(object):
         })
 
         self.processes = process.Processes(self.create_socket)
-
-        self.populate_safe()
+        self.create_safe()
+        self.create_options()
         self.handle_signals()
 
         self.standard_directory = os.path.join(duxlot.path, "standard")
@@ -60,8 +62,6 @@ class Client(object):
         self.load()
         self.setup()
 
-        # process.SocketProcess calls this, no need to do it here
-        # self.create_socket()
         self.start()
         self.tasks()
 
@@ -72,7 +72,7 @@ class Client(object):
             debug("See http://stackoverflow.com/questions/2009278 to fix")
             sys.exit(1)
 
-    def populate_safe(self):
+    def create_safe(self):
         self.safe = safe = duxlot.Storage()
 
         safe.manager = multiprocessing.Manager()
@@ -85,19 +85,96 @@ class Client(object):
         safe.schedule = self.processes["schedule"].queue
 
         safe.data = safe.manager.dict()
-        safe.options = safe.manager.dict(self.config.data)
+        safe.options = options.Options(self.config.name, safe)
         safe.commands = process.Commands(safe.manager, safe.schedule.put)
 
-        db_base = self.config.data["database"]
-        db_base = db_base.replace("$(BASE)", self.config.base)
-        db_base = duxlot.config.path(db_base)
-
+        db_base = duxlot.config.path(self.config.base + ".database")
         safe.database = duxlot.database(db_base, safe.manager.Namespace())
         safe.send_message = create_send_message(safe.sending, debug)
 
         def log(*text):
             safe.tasks.put(("log",) + text)
         safe.log = log
+
+    def create_options(self):
+        group = self.safe.options.group
+        option = self.safe.options.option
+        
+        @group()
+        class address(option):
+            "Address of the server to connect to"
+            default = "irc.freenode.net:6667"
+        
+            def parse(self, value):
+                match = self.regexp(r"(ssl )?([^:]+)(?:[:]([0-9]+))?", value)
+                ssl, host, port = match.groups()
+                return {
+                    "ssl": True if ssl else False,
+                    "host": host,
+                    "port": int(port) if port else 6667
+                }
+
+        @group()
+        class flood(option):
+            "Whether to flood or not"
+            default = False
+            types = {bool}
+        
+        @group()
+        class nick(option):
+            "Nick of the bot"
+            @property
+            def default(self):
+                import random
+                # 000 to 999 inclusive
+                return "duxlot%03i" % random.randrange(1000)
+        
+            def parse(self, value):
+                # RFC 2812 put the length limit at 9 characters
+                # Then it says servers ought to accept larger nicknames...
+                # Setting the limit to 32 here as a sanity check
+                # Note that some nicknames in the wild start with numbers
+                prefix = r"[A-Za-z0-9\x5B-\x60\x7B-\x7D]"
+                extra = r"[A-Za-z0-9\x5B-\x60\x7B-\x7D-]"
+                self.regexp(r"(%s%s{,31})" % (prefix, extra), value)
+        
+            # @@ reactions could be in the code setting the option...
+            def react(self):
+                self.safe.send_message("NICK", self.data.value)
+        
+        @group()
+        class prefix(option):
+            "Default command prefix, or channel to prefix mapping"
+            default = "."
+            types = {dict, str}
+        
+            def parse(self, value):
+                def check(prefix):
+                    if len(prefix) > 128:
+                        # 64 is just long enough to allow the supercombiner
+                        raise ValueError("Maximum prefix length is 64 characters")
+                    
+                if isinstance(value, str):
+                    check(value)
+                    return {"channels": {"": value}}
+
+                for prefix in value.values():
+                    check(prefix)
+                return {"channels": value}
+        
+        @group()
+        class standard(option):
+            "Modules to load"
+            default = []
+            types = {list}
+        
+            def parse(self, value):
+                ...
+        
+            def react(self):
+                self.safe.schedule.put((0, "reload"))
+        
+        self.safe.options.complete()
 
     def handle_signals(self):
         # http://stackoverflow.com/questions/2549939
@@ -144,15 +221,16 @@ class Client(object):
 
         self.modules = {}
 
-        standard = set(self.safe.options["standard"])
-        directories = [self.standard_directory] + self.safe.options["user"]
+        # @@ standard = set(self.safe.options("standard"))
+        directories = [self.standard_directory]
+        directories += self.safe.options("standard")
 
         for directory in directories:
             module_names = modules_in_directory(directory)
 
-            if directory == self.standard_directory:
-                if standard != {"*"}:
-                    module_names = standard & set(module_names)
+            # if directory == self.standard_directory:
+            #     if standard != {"*"}:
+            #         module_names = standard & set(module_names)
 
             imported_names = []
             for module_name in module_names:
@@ -200,13 +278,15 @@ class Client(object):
 
         return True
 
-    def setup(self):
+    def setup(self, react=False):
         # @@ Recording sources of commands
         for startup in duxlot.startups:
             startup(self.safe)
 
         self.safe.named = duxlot.commands.copy()
         self.safe.events = duxlot.events.copy()
+
+        self.safe.options.load(react=react)
 
     def start(self):
         self.processes["receive"].action(process_receive, self.safe)
@@ -220,7 +300,7 @@ class Client(object):
     def create_socket(self):
         sock = socket.socket(socket.AF_INET, socket.TCP_NODELAY)
 
-        if self.safe.options["ssl"] is True:
+        if self.safe.options("address", "ssl") is True:
             import ssl
             debug("Warning: Using SSL, but not validating the cert!")
             sock = ssl.wrap_socket(
@@ -229,7 +309,10 @@ class Client(object):
                 cert_reqs=ssl.CERT_NONE # @@ or CERT_REQUIRED
             )
 
-        address = (self.safe.options["server"], self.safe.options["port"])
+        address = (
+            self.safe.options("address", "host"),
+            self.safe.options("address", "port")
+        )
 
         debug("Connecting to %s:%s" % address)
         try: sock.connect(address)
@@ -273,7 +356,7 @@ class Client(object):
             debug("Reloading...")
             success = self.reload(sender, nick)
             if success:
-                self.setup()
+                self.setup(react=True)
             debug("Reloaded")
 
         self.processes["messages"].action(process_messages, self.safe)
@@ -300,7 +383,7 @@ class Client(object):
         debug(" ")
 
         self.processes.empty()
-        if not self.safe.options["flood"]:
+        if not self.safe.options("flood"):
             time.sleep(3)
 
         elapsed = 0
@@ -327,7 +410,7 @@ class Client(object):
         debug("Disconnected")
         debug("")
 
-        if not self.safe.options["flood"]:
+        if not self.safe.options("flood"):
             time.sleep(6)
 
         self.processes.empty()
@@ -362,6 +445,8 @@ class Client(object):
             msg = "%s processes are running (%s)" % (number, names)
             self.safe.send_message("PRIVMSG", sender, nick + ": " + msg)
 
+    # @@ main_pid
+
     @task
     def main_collect(self, timeout=60):
         collectable = self.safe.commands.collectable(timeout)
@@ -391,7 +476,7 @@ class Client(object):
 
     @task
     def main_ping(self):
-        self.safe.send_message("PING", self.safe.options["nick"])
+        self.safe.send_message("PING", self.safe.options("nick"))
 
     @task
     def main_ponged(self, pinged):
@@ -459,7 +544,7 @@ def process_send(safe):
                 # @@ If we wait for QUIT, the socket can I/O error
                 # This is strange because the receive socket is fine
                 if not octets.startswith(b"QUIT"):
-                    if not safe.options["flood"]:
+                    if not safe.options("flood"):
                         now = time.time()
                         if sent > (now - 1):
                             time.sleep(0.5)
@@ -737,14 +822,12 @@ def create_irc_env(safe, message):
         if "address" in safe.data:
             env.limit = 498 - len(env.sender) + len(safe.data["address"])
 
-        prefixes = safe.options["prefixes"]
-        if env.sender in prefixes:
-            prefix = prefixes[env.sender]
-        else:
-            prefix = safe.options["prefix"]
+        prefix = safe.options("prefix", "channels").get(env.sender)
+        if prefix is None:
+            prefix = safe.options("prefix", "channels").get("")
+        env.prefix = prefix
 
-        if env.text.startswith(prefix):
-            env.prefix = prefix
+        if env.text.startswith(prefix):            
             sans_prefix = env.text[len(prefix):]
 
             if " " in sans_prefix:
@@ -752,7 +835,7 @@ def create_irc_env(safe, message):
             else:
                 env.command, env.arg = sans_prefix, ""
 
-        env.private = env.sender == safe.options["nick"]
+        env.private = env.sender == safe.options("nick")
         if env.private:
             env.sender = env.nick
 
@@ -762,7 +845,7 @@ def create_irc_env(safe, message):
     # @@ schedule wrapper?
     # env.task = safe.tasks.put
     env.database = safe.database
-    env.schedule = safe.schedule.put
+    # env.schedule = safe.schedule.put
     env.sent = safe.sending.join
     env.log = safe.log
 
@@ -776,6 +859,10 @@ def create_irc_env(safe, message):
             text = env.nick + ": " + text
             safe.send_message("PRIVMSG", env.sender, text)
         env.reply = reply
+
+    # @@ functionise
+    env.task = lambda *args: safe.schedule.put((0,) + args)
+    env.schedule = lambda *args: safe.schedule.put(args)
 
     def send(*arguments):
         safe.send_message(*arguments)
