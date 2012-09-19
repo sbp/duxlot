@@ -68,7 +68,7 @@ for lines in text.split("\n\n"):
         lines = lines.rstrip("\n")
         if not lines:
             return
-        # if not lines.startswith(".bing"):
+        # if not lines.startswith(".tw"):
         #     return
 
         # @@ expected
@@ -86,6 +86,9 @@ for lines in text.split("\n\n"):
                     conn.nowt()
                 elif line.startswith("WAIT "):
                     time.sleep(int(line.split(" ").pop().strip()))
+                elif line.startswith("SAY"):
+                    line = line.split(" ", 1).pop()
+                    conn.send(":user!~user@localhost", "PRIVMSG", "#duxlot", line)
                 else:
                     if line.startswith(": "):
                         line = "user" + line

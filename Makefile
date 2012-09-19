@@ -25,6 +25,11 @@ publish:
 	@## Publish a version to pypi and github
 	bash publish.sh
 
+.PHONY: pypitest
+pypitest:
+	@## Push a test distribution to testpypi
+	python3 setup.py sdist --formats=bztar upload -r test
+
 .PHONY: update
 update:
 	@## Update from source directory

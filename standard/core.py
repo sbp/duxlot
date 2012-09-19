@@ -75,14 +75,6 @@ def _in(env):
     )
     env.reply("Will remind %s" % phrase)
 
-@command
-def load_services(env):
-    "Load the new services"
-    global web_services_manifest
-    web_services_manifest = api.services.manifest()
-    env.database.dump("services", web_services_manifest)
-    env.reply("%s services loaded" % len(web_services_manifest))
-
 # env, kind of
 @command
 def maximum(env):
@@ -123,9 +115,9 @@ def parsed_message(env):
 @command
 def reload(env):
     "Reload all commands and services"
-    env.sent()
     env.task("reload", env.sender, env.nick)
 
+# @@ This is just a debug command
 @command
 def schedule(env):
     "Schedule an event"
@@ -135,7 +127,8 @@ def schedule(env):
 
     t, text = env.arg.split(" ", 1)
     t = float(t)
-    env.schedule(t, env.sender, env.nick, text)
+    # env.schedule(t, env.sender, env.nick, text)
+    env.schedule(t, "msg", env.sender, env.nick + ": " + text)
     env.reply("Scheduled")
 
 # @@ test to make sure the right time is given!
@@ -165,11 +158,6 @@ def seen(env):
         )
 
         env.say("On %s at %s" % (place, dt))
-
-@command
-def services(env):
-    "Show the number of loaded services"
-    env.reply("%s services available" % len(web_services_manifest))
 
 # @@ a check that commands are covered here
 @command
@@ -362,10 +350,6 @@ def privmsg_event(env):
         env.options("nick") + ": prefix?"
     }
     if env.text in p_commands:
-        # prefix = safe.options("prefix", "channels").get(env.sender)
-        # if prefix is None:
-        #     prefix = safe.options("prefix", "channels").get("")
-
         env.reply("Current prefix for here is \"%s\"" % env.prefix)
 
     ### Note channel links ###
@@ -385,54 +369,12 @@ def privmsg_event(env):
 ### Other ###
 
 @duxlot.startup
-def cache_data(safe):
-    # @@ could this be even faster?
-    api.clock.cache_timezones_data()
-    api.unicode.cache_unicode_data()
-
-web_services_manifest = {}
-
-@duxlot.startup
-def create_web_services(safe):
-    global web_services_manifest
-
-    safe.database.init("services", {}) # @@ or just load with default
-    web_services_manifest = safe.database.cache.services
-    items = web_services_manifest.items()
-
-    for command_name, url in items:
-        if command_name in {"py", "wa"}:
-            continue
-
-        def create(command_name, url):
-            if command_name in duxlot.commands:
-                # @@ Need a better services list
-                # print("Warning: Skipping duplicate: %s" % command_name)
-                return
-
-            @duxlot.named(command_name)
-            def service(env):
-                kargs = {
-                    "url": service.url,
-                    "arg": env.arg,
-                    "nick": env.nick,
-                    "sender": env.sender
-                }
-                line = api.services.query(**kargs)
-                if line:
-                    env.say(line[:510])
-            service.__doc__ = "Web service: %s" % url
-            service.url = url
-        create(command_name, url)
-
-
-@duxlot.startup
-def startup(safe):
-    if "core" in safe.options.completed:
+def startup(public):
+    if "core" in public.options.completed:
         return
 
-    group = safe.options.group
-    option = safe.options.option
+    group = public.options.group
+    option = public.options.option
 
     @group("core")
     class private(option):
@@ -443,4 +385,4 @@ def startup(safe):
     class zoneinfo(option):
         default = "/usr/share/zoneinfo"
 
-    safe.options.complete("core")
+    public.options.complete("core")

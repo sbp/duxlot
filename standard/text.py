@@ -28,7 +28,14 @@ def zone_from_nick(env, nick):
         return opt.offset, opt.abbreviation
 
 @duxlot.startup
-def create_api_commands(safe):
+def cache_data(public):
+    # @@ could this be even faster?
+    # @@ needs to be anywhere that api is used!
+    api.clock.cache_timezones_data()
+    api.unicode.cache_unicode_data()
+
+@duxlot.startup
+def create_api_commands(public):
     services = api.text()
 
     def takes(service, kind):
@@ -59,6 +66,7 @@ def create_api_commands(safe):
                     a, b = zone_from_nick(env, env.nick)
                     arg = ":%s :%s %s" % (a, b, arg)
 
+                # @@ Service type? (irc, web, etc.)
                 text = services[name](
                     text=arg,
                     maximum={

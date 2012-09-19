@@ -72,12 +72,12 @@ def received_pong(env):
     env.data["ponged"] = time.time()
 
 @duxlot.startup
-def startup(safe):
-    if "start" in safe.options.completed:
+def startup(public):
+    if "start" in public.options.completed:
         return
 
-    group = safe.options.group
-    option = safe.options.option
+    group = public.options.group
+    option = public.options.option
 
     @group("start")
     class channels(option):
@@ -93,4 +93,4 @@ def startup(safe):
     class password(option):
         ...
 
-    safe.options.complete("start")
+    public.options.complete("start")

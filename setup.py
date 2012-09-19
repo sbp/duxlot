@@ -19,23 +19,22 @@ with open(os.path.join("data", "version"), encoding="ascii") as f:
     version = f.read()
     version = version.rstrip()
 
-README = r"""\
-Duxlot_ is a new IRC bot created in 2012 by `Sean B. Palmer`_, the maker of the
-popular Phenny_. Features include a fast multiprocess based architecture,
-modularity, and ease of use. Duxlot has no dependencies except Python3, and
-will even work without having to be installed as as package. Source on Github,
-`@sbp/duxlot`_.
+README = r"""
+Duxlot_ is a new IRC bot created by `Sean B. Palmer`_, the maker of the popular
+Phenny_. Features include a fast multiprocess architecture, modularity, and
+ease of use. Duxlot has no dependencies except Python 3, and will even work
+without having to be installed as as package. `Source on Github`_.
 
 .. _Duxlot: http://inamidst.com/duxlot/
 .. _Sean B. Palmer: http://inamidst.com/sbp/
 .. _Phenny: http://inamidst.com/phenny/
-.. _@sbp/duxlot: https://github.com/sbp/duxlot
-
-    **WARNING:** This is an early, pre-release alpha version of Duxlot. The API
-    and features may change wildly, and the bot may not be stable.
+.. _Source on Github: https://github.com/sbp/duxlot
 
 Install
 ---------
+
+    **WARNING:** This is an pre-release alpha version of Duxlot. The API and
+    features may change, and the bot may not be stable.
 
 You may use **either** of these methods:
 
@@ -45,20 +44,18 @@ You may use **either** of these methods:
 
         python3 setup.py install
 
-*   Install using pip_::
+*   OR: Install using pip_::
 
         pip install duxlot
 
-.. _latest source: #downloads
+.. _latest source: http://testpypi.python.org/pypi/duxlot#downloads
 .. _pip: http://pypi.python.org/pypi/pip
 
 **Optionally** use virtualenv_ for either of these methods.
 
 .. _virtualenv: http://www.virtualenv.org/en/latest/index.html#installation
 
-You can now use the ``duxlot`` script—either the one in the package that you
-downloaded, or the one that should be on your ``$PATH`` from installation. Try
-``duxlot --help``.
+You can now use the ``duxlot`` script. Try ``duxlot --help``.
 """ % version
 
 # http://stackoverflow.com/questions/4384796

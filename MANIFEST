@@ -20,6 +20,7 @@ data/unicodedata.pickle
 data/version
 standard/admin.py
 standard/core.py
+standard/services.py
 standard/start.py
 standard/text.py
 test/client

@@ -446,6 +446,102 @@ def duxlot_version(args):
     version = version.rstrip()
     return version
 
+@service(general)
+def wolfram_alpha(args):
+    page = web.request(
+        url="http://www.wolframalpha.com/input/",
+        follow=True,
+        query={
+            "asynchronous": "false",
+            "i": args.query
+        }
+    )
+
+    simples = {
+        r"\/": "/",
+        r"\'": "'",
+        "": "",
+        " °": "°",
+        "~~": " ~ "
+    }
+
+    patterns = {
+        r"\\n( *\| *)?": ", ",
+        r"~~ *\(": "~(",
+        r"[ \t]+": " ",
+        r"([0-9]{12})[0-9]+": r"\g<1>"
+    }
+
+    r_parens = re.compile(r"(\s*)\(\s*(.*?)\s*\)")
+
+    def parentheses(text):
+        def replacement(match):
+            pre = " " if match.group(1) else ""
+            content = match.group(2)
+            return pre + "(" + content + ")"
+        return r_parens.sub(replacement, text)
+
+    r_superscript = re.compile(r"\^(-?[0-9]+)")
+
+    def superscript(text):
+        super = {"0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+            "5": "⁵", "6": "⁶", "7": "⁷","8": "⁸", "9": "⁹", "-": "⁻"}
+
+        def replacement(match):
+            characters = []
+            for character in match.group(1):
+                characters.append(super.get(character, character))
+            return "".join(characters)
+        return r_superscript.sub(replacement, text)
+
+    def pretty(text):
+        for key, value in simples.items():
+            text = text.replace(key, value)
+
+        for key, value in patterns.items():
+            text = re.sub(key, value, text)
+
+        text = re.sub(r"[ \t]+\|[ \t]+", ": ", text)
+        text = parentheses(text)
+        return superscript(text)
+
+    first = ""
+    r_stringified = re.compile(r'"stringified":\s"([^"]+)"')
+    items = []
+
+    out = duxlot.Storage()
+    out.expression = ""
+    out.expressions = []
+
+    for i, stringified in enumerate(r_stringified.findall(page.text)):
+        # print(">", stringified)
+        exp = pretty(stringified)
+        if not i:
+            out.expression = exp[:]
+        else:
+            if exp.startswith(out.expression):
+                exp = exp[len(out.expression):].lstrip(" =")
+            out.expressions.append(exp)
+        # print("*", exp)
+
+    sep = "; "
+
+    limit = args().get("limit", 1024)
+
+    if not out.expression:
+        out.text = "No results found" # @@ move to wa(...)?
+        return out
+
+    out.text = out.expression + " = "
+    for exp in out.expressions:
+        if len((out.text + exp + sep).encode("utf-8")) > limit:
+            break
+
+        out.text += exp + sep
+    out.text = out.text.rstrip(sep)
+
+    return out
+
 
 ### Module: Geo ###
 
@@ -1680,6 +1776,8 @@ def title(args):
 
     return web.title(url=url, follow=True)
 
+text.title.argument = "link"
+
 @service(text)
 def tock(args):
     "Display the time from the USNO tock server"
@@ -1768,6 +1866,7 @@ def u(args):
     flag, arg = irc.optflag(arg=args.text)
 
     regex_digit = re.compile("[0-9]")
+    # @@ simplify the following two?
     regex_hex = re.compile("(?i)^[0-9A-F]{2,6}$")
     regex_codepoint = re.compile(r"(?i)^(U\+|\\u)[0-9A-F]{2,6}$")
     regex_simple = re.compile(r"^[\x20-\x7E]+$")
@@ -1805,6 +1904,7 @@ def ubcp(args):
     if not args.text:
         return text.ubcp.__doc__
 
+    # @@ Ranges! e.g. 3380-33d8 (requested by dpk)
     flag, arg = irc.optflag(arg=args.text)
     if not arg:
         return "Need something to search for"
@@ -1898,9 +1998,18 @@ def w(args):
         result = result[:295] + "[...]"
     return result
 
-# @@ can this take a link?
 @service(text)
 def wa(args):
+    "Consult Wolfram|Alpha"
+    limit = args.maximum.get("bytes") or \
+        args.maximum.get("characters") or 256
+    o = general.wolfram_alpha(query=args.text, limit=limit)
+    return o.text
+
+comment = """
+# @@ can this take a link?
+@service(text)
+def wa_service(args):
     "Consult Wolfram|Alpha using a web service"
     # 1 + 1 gives an error
     if not args.text:
@@ -1930,6 +2039,7 @@ def wa(args):
         return str(response())
     else:
         return response()[flag]
+"""
 
 @service(text)
 def wik(args):
@@ -1970,17 +2080,7 @@ regex_twitter_whiteline = re.compile(r"(?ims)[ \t]+[\r\n]+")
 regex_twitter_breaks = re.compile(r"(?ims)[\r\n]+")
 regex_twitter_b = re.compile(r"(?ims)<b>(.+?)</b>")
 regex_twitter_canonical = \
-    re.compile(r'rel="canonical" href="http://twitter.com/([^/\">]+)')
-
-comment ="""
-twitter.data = Storage(
-    regex_username=re.compile(r"^[a-zA-Z0-9_]{1,15}$"),
-    ...
-    regex_canonical=re.compile(
-        r'rel="canonical" href="http://twitter.com/([^/\">]+)'
-    )
-)
-"""
+    re.compile(r'rel="canonical" href="https?://twitter.com/([^/\">]+)')
 
 @service(twitter)
 def page(args):
@@ -1989,6 +2089,7 @@ def page(args):
     text = page.text
 
     if not "username" in args:
+        out.username = "?"
         for username in regex_twitter_canonical.findall(text):
             out.username = username
             break
@@ -2108,6 +2209,30 @@ def by_hexcp(args):
 
     raise Error("No unicode character found")
 
+comment = """
+@service(unicode)
+def by_hexcps(args):
+    if args("categories"):
+        categories = set(args.categories.upper())
+    else:
+        categories = None
+
+    a, b = args.range.split("-")
+    a = int(a.lstrip("0") or 0, 16)
+    b = int(b.lstrip("0") or 0, 16)
+
+    results = []
+    for cp, data in sorted(unicode.unicode_data.items()):
+        if categories:
+            if data["category"] not in categories:
+                continue
+
+        if a <= data["codepoint"] <= b:
+            results.append((cp, data))
+
+    raise Error("No unicode character found")
+"""
+
 @service(unicode)
 def by_name(args):
     if args("categories"):
@@ -2206,28 +2331,58 @@ def character_grep(args):
     else:
         categories = None
 
-    # @@ this is duplicated
-    regex_metachar = re.compile("[%s]" % re.escape(r"$()*+.?[\]^{|}"))
-    if regex_metachar.search(args.search):
-        pattern = args.search
-    else:
-        pattern = ".*".join(r"\b" + word for word in args.search.split(" "))
-    regex_pattern = re.compile("(?i)" + pattern)
+    pattern_cp = r"(?:U\+|\\u)?([0-9A-F]{2,6})"
+    regex_codepoint = re.compile(r"(?i)^%s$" % pattern_cp)
+    regex_codepoints = re.compile(r"(?i)^%s-%s$" % (pattern_cp, pattern_cp))
+
+    cp = regex_codepoint.match(args.search)
+    cps = regex_codepoints.match(args.search)
 
     results = []
     length = 0
-    for cp, data in sorted(unicode.unicode_data.items()):
-        if categories:
-            if data["category"] not in categories:
+
+    if (cp is not None) or (cps is not None):
+        if cp is not None:
+            a, b = cp.group(1), cp.group(1)
+        else:
+            a, b = cps.group(1), cps.group(2)
+
+        a = int(a.lstrip("0") or 0, 16)
+        b = int(b.lstrip("0") or 0, 16)
+
+        for cp, data in sorted(unicode.unicode_data.items()):
+            if categories:
+                if data["category"] not in categories:
+                    continue
+
+            if not (a <= data["codepoint"] <= b):
                 continue
 
-        if not regex_pattern.search(data["name"]):
-            continue
-
-        results.append(data["display"])
-        length += len(data["display"].encode("utf-8")) + 1
-        if length >= 384:
-            break
+            results.append(data["display"])
+            length += len(data["display"].encode("utf-8")) + 1
+            if length >= 384:
+                break
+    else:
+        # @@ this is duplicated
+        regex_metachar = re.compile("[%s]" % re.escape(r"$()*+.?[\]^{|}"))
+        if regex_metachar.search(args.search):
+            pattern = args.search
+        else:
+            pattern = ".*".join(r"\b" + word for word in args.search.split(" "))
+        regex_pattern = re.compile("(?i)" + pattern)
+    
+        for cp, data in sorted(unicode.unicode_data.items()):
+            if categories:
+                if data["category"] not in categories:
+                    continue
+    
+            if not regex_pattern.search(data["name"]):
+                continue
+    
+            results.append(data["display"])
+            length += len(data["display"].encode("utf-8")) + 1
+            if length >= 384:
+                break
 
     if not results:
         raise Error("No characters found")

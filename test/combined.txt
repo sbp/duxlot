@@ -49,6 +49,15 @@ b'\xc3\xbb\xc3\xb4\xc3\x9f'
 .chars epi
 𐅛 𐅞 𐅬 ꟻ ꟼ ꟽ ꟾ ꟿ
 
+.chars 00BD
+½
+
+.chars 00BD-00CD
+½ ¾ ¿ À Á Â Ã Ä Å Æ Ç È É Ê Ë Ì Í
+
+.chars :L 00BD-00CD
+À Á Â Ã Ä Å Æ Ç È É Ê Ë Ì Í
+
 .date
 <[0-9]{4}-[0-9]{2}-[0-9]{2}>
 
@@ -218,6 +227,10 @@ inamidst.com, by Sean B. Palmer
 .title http://inamidst.com/
 inamidst.com, by Sean B. Palmer
 
+SAY http://inamidst.com/duxlot/
+.title
+Duxlot IRC Bot
+
 .to
 : Send a message to another user
 
@@ -283,7 +296,7 @@ duxlot <[0-9.-]+>, and python <[0-9.]+>
 frog — noun: 1. <.*>amphibian<.*>
 
 .wa first day of 2012
-start of->2012; Sunday, January 1, 2012; <.*>
+start of: 2012 = Sunday, January 1, 2012; <.*>
 
 .wik Rime of the Ancient Mariner
 "The Rime of the Ancient Mariner <.*> Coleridge<.*>" - https://en.wikipedia.org/wiki/Rime_of_the_Ancient_Mariner

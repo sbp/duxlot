@@ -29,7 +29,8 @@ class Process(object):
         self.name = name
 
         self.function = None
-        self.storage = None
+        self.private = None
+        self.public = None
 
         self.process = None
         self.started = None
@@ -38,9 +39,10 @@ class Process(object):
         self.inactive = multiprocessing.Event()
         self.inactive.set()
 
-    def action(self, function, storage):
+    def action(self, function, private, public):
         self.function = function
-        self.storage = storage
+        self.private = private
+        self.public = public
 
     def start(self):
         if self.active:
@@ -53,20 +55,21 @@ class Process(object):
             signal.signal(signal.SIGUSR1, signal.SIG_IGN)
 
             self.inactive.clear()
-            try: self.function(self.storage)
+            try: self.function(self.private, self.public)  # @@ freeze?
             finally:
                 self.inactive.set()
 
         self.process = multiprocessing.Process(
             target=wrapper,
             name=self.name,
-            args=(self,) # @@ freeze?
+            args=(self,)
         )
 
         self.process.start()
         pids.add(self.process.pid)
         self.started = time.time()
 
+    # @@ Unused
     def duration(self):
         if self.started is None:
             return None
@@ -118,7 +121,7 @@ class SocketProcess(Process):
 
     def start(self):
         self.socket = self.create_socket()
-        self.storage.socket = self.socket
+        self.private.socket = self.socket
         Process.start(self)
 
     def finish(self):
@@ -134,9 +137,9 @@ class QueueProcess(Process):
         Process.__init__(self, name)
         self.queue = multiprocessing.JoinableQueue()
 
-    def action(self, function, storage):
-        Process.action(self, function, storage)
-        self.storage.queue = self.queue.get
+    # def action(self, function, private, public):
+    #     Process.action(self, function, private, public)
+    #     self.private.queue = self.queue.get
 
     def finish(self):
         if self.active:
@@ -227,13 +230,12 @@ class Processes(object):
         return len(multiprocessing.active_children())
 
 class Commands(object):
-    def __init__(self, manager, schedule):
+    def __init__(self, manager):
         self.lock = multiprocessing.Lock()
         self.number = manager.Value("i", 0)
         self.active = manager.Value("i", 0)
         self.known = manager.dict()
         self.pid = manager.dict()
-        self.schedule = schedule
 
     def __contains__(self, name):
         return name in self.known
@@ -251,12 +253,12 @@ class Commands(object):
             if process.name.startswith("Command "):
                 yield process
 
-    def spawn(self, function, storage):
+    def spawn(self, function, public):
         if self.active.value >= 18:
             debug("Command failed: too many active processes")
             return False
 
-        def process(self, name, function, storage):
+        def process(self, name, function, public):
             # global pids
 
             debug(name, "starting")
@@ -285,7 +287,7 @@ class Commands(object):
             # This must be IGN
             signal.signal(signal.SIGUSR1, signal.SIG_IGN)
 
-            try: function(storage)
+            try: function(public)
             finally:
                 with self.lock:
                     cleanup()
@@ -299,7 +301,7 @@ class Commands(object):
         p = multiprocessing.Process(
             target=process,
             name=name,
-            args=(self, name, function, storage)
+            args=(self, name, function, public)
         )
         p.start()
         self.pid[name] = p.pid
@@ -318,6 +320,10 @@ class Commands(object):
             except Exception as err:
                 debug("Error:", err)
                 return False
+            else:
+                # Can give "OSError: [Errno 10] No child processes"
+                try: os.waitpid(pid, 0)
+                except OSError: ...
 
             pids.discard(pid)
             del self.known[name]

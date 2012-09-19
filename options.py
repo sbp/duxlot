@@ -16,12 +16,12 @@ class Option(object):
     default = None
     types = {type(None), str}
 
-    def __init__(self, group, safe):
+    def __init__(self, group, manager, public):
         local = canonicalise(self.__class__.__name__)
         self.name = group + "-" + local if group else local
 
-        self.safe = safe
-        self.data = safe.manager.Namespace()
+        self.public = public
+        self.data = manager.Namespace()
         self.data.prefix = ""
         self.data.value = None
 
@@ -72,12 +72,13 @@ class Option(object):
 class Options(object):
     option = Option
 
-    def __init__(self, filename, safe):
+    def __init__(self, filename, manager, public):
         import collections
 
         self.filename = filename
-        self.safe = safe
-        self.map = safe.manager.Namespace()
+        self.manager = manager
+        self.public = public
+        self.map = manager.Namespace()
         self.map.pings = collections.OrderedDict()
         self.__options = {}
         self.completed = set()
@@ -93,7 +94,7 @@ class Options(object):
             raise ValueError("the %r group is complete" % name)
 
         def decorate(definition):
-            option = definition(name, self.safe)
+            option = definition(name, self.manager, self.public)
             self.__options[option.name] = option
         return decorate
 

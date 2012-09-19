@@ -1,16 +1,20 @@
 Duxlot, the IRC Bot
 ===================
 
-Duxlot_ is a new IRC bot created in 2012 by `Sean B. Palmer`_, the maker of the popular Phenny_. Features include a fast multiprocess based architecture, modularity, and ease of use. Duxlot has no dependencies except Python3, and will even work without having to be installed as as package.
+Duxlot_ is a new IRC bot created by `Sean B. Palmer`_, the maker of the popular
+Phenny_. Features include a fast multiprocess architecture, modularity, and
+ease of use. Duxlot has no dependencies except Python 3, and will even work
+without having to be installed as as package.
 
 .. _Duxlot: http://inamidst.com/duxlot/
 .. _Sean B. Palmer: http://inamidst.com/sbp/
 .. _Phenny: http://inamidst.com/phenny/
 
-	**WARNING:** This is an early, pre-release alpha version of Duxlot. The API and features may change wildly, and the bot may not be stable.
-
 Install
 ---------
+
+    **WARNING:** This is an pre-release alpha version of Duxlot. The API and
+    features may change, and the bot may not be stable.
 
 Get `Python 3.2`_ or later.
 
@@ -20,17 +24,17 @@ You may use **either** of these methods:
 
 *   Download the latest source:
 
-        `duxlot-0.9.17-2033.tar.bz2`_
+        `duxlot-0.9.19-1542.tar.bz2`_
 
-    Unpack it and enter ``duxlot-0.9.17-2033/``
+    Unpack it and enter ``duxlot-0.9.19-1542/``
 
     **Optionally** install using::
 
         python3 setup.py install
 
-.. _duxlot-0.9.17-2033.tar.bz2: http://pypi.python.org/packages/source/d/duxlot/duxlot-0.9.17-2033.tar.bz2
+.. _duxlot-0.9.19-1542.tar.bz2: http://pypi.python.org/packages/source/d/duxlot/duxlot-0.9.19-1542.tar.bz2
 
-*	Install from pypi_ using pip_::
+*	OR: Install from pypi_ using pip_::
 
 		pip install duxlot
 
@@ -41,27 +45,35 @@ You may use **either** of these methods:
 
 .. _virtualenv: http://www.virtualenv.org/en/latest/index.html#installation
 
-You can now use the ``duxlot`` script—either the one in the package that you downloaded, or the one that should be on your ``$PATH`` from installation.
+You can now use the ``duxlot`` script—either the one in the package that you
+downloaded, or the one that should be on your ``$PATH`` from installation.
 
 Use
 ---
 
-	**WARNING:** The entire Duxlot API is not yet stable, including the configuration file. Early adopters will find themselves having to change the configuration files often, with undocumented changes occurring.
+	**WARNING:** The entire Duxlot API is not yet stable, including the
+	configuration file. Early adopters will find themselves having to change
+	the configuration files often, with undocumented changes occurring.
 
-Duxlot works by loading a JSON_ configuration file specified by the user. To create a default configuration file with some options filled in to work from, do::
+Duxlot works by loading a JSON_ configuration file specified by the user. To
+create a default configuration file with some options filled in to work from,
+do::
 
 	duxlot create
 
 .. _JSON: https://en.wikipedia.org/wiki/JSON
 
-This will create a file at ``~/.duxlot/duxlot.json``, which is the **default configuration file**. You can also create this file manually, if you prefer. You can then edit the file with various options recognised by Duxlot. Here's an example::
+This will create a file at ``~/.duxlot/duxlot.json``, which is the **default
+configuration file**. You can also create this file manually, if you prefer.
+You can then edit the file with various options recognised by Duxlot. Here's an
+example::
 
 	{
-	    "server": "barjavel.freenode.net",
+	    "address": "barjavel.freenode.net:6667",
 	    "nick": "duxlot001",
-	    "channels": ["#duxlot-test"],
 	    "prefix": "^",
-	    "owner": "you"
+	    "admin-owner": "you",
+	    "start-channels": ["#duxlot-test"]
 	}
 
 A summary of all allowed options is given in the section below.
@@ -76,7 +88,8 @@ Or in the foreground::
 
 	duxlot --foreground start
 
-If you run the bot as a daemon, you will be told the PID_ of the daemon. You can stop the bot using the stop action::
+If you run the bot as a daemon, you will be told the PID_ of the daemon. You
+can stop the bot using the stop action::
 
 	duxlot stop
 
@@ -113,7 +126,8 @@ These are the allowed option fields for the configuration file:
 Story
 -----
 
-People love Phenny, the predecessor of Duxlot. Some of them have wondered how Duxlot relates to Phenny. Stay tuned for information!
+People love Phenny, the predecessor of Duxlot. Some of them have wondered how
+Duxlot relates to Phenny. Stay tuned for information!
 
 Pronunciation
 -------------

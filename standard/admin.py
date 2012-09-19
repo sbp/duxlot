@@ -36,15 +36,15 @@ def commands(env):
             import os.path
             filename = os.path.expanduser(filename)
 
-            with env.lock:
-                with duxlot.filesystem.open(filename, "w", encoding="utf-8") as w:
-                    for name, function in sorted(named.items()):
-                        w.write("." + name + "\n")
-            
-                        if hasattr(function, "__doc__") and function.__doc__:
-                            w.write(function.__doc__ + "\n\n")
-                        else:
-                            w.write("ERROR: NO DOCUMENTATION!\n\n")
+            # with env.lock:
+            with duxlot.filesystem.open(filename, "w", encoding="utf-8") as w:
+                for name, function in sorted(named.items()):
+                    w.write("." + name + "\n")
+        
+                    if hasattr(function, "__doc__") and function.__doc__:
+                        w.write(function.__doc__ + "\n\n")
+                    else:
+                        w.write("ERROR: NO DOCUMENTATION!\n\n")
 
         try: document("~/.duxlot-commands", duxlot.commands)
         except (IOError, OSError) as err:
@@ -110,6 +110,12 @@ def part(env):
         env.send("PART", env.arg)
 
 @command
+def pids(env):
+    "Show the PIDs for the various processes"
+    if env.owner and env.private:
+        env.task("pids", env.sender, env.nick)
+
+@command
 def prefix(env):
     "Set the command prefix for all channels"
     if env.admin:
@@ -150,19 +156,6 @@ def quit(env):
     "Request the bot to quit from the server and exit"
     if env.credentials("owner", "adminchan"):
         env.task("quit", env.nick)
-
-@command
-def reload2(env):
-    "Reload all commands and services"
-    if env.credentials("admin", "adminchan"):
-    # if env.admin: # @@ private, admin-channel only?
-        # could send reloading first, then join send queue
-        env.reply("Okay, reloading...")
-        env.sent()
-        env.task("reload", env.sender, env.nick)
-    else:
-        env.reply("That's an admin-only feature")
-        # or, Ask an admin to do that
 
 @command
 def restart(env):
@@ -269,12 +262,12 @@ def build_admin(env):
     return env
 
 @duxlot.startup
-def startup(safe):
-    if "admin" in safe.options.completed:
+def startup(public):
+    if "admin" in public.options.completed:
         return
 
-    group = safe.options.group
-    option = safe.options.option
+    group = public.options.group
+    option = public.options.option
 
     @group("admin")
     class channels(option):
@@ -290,4 +283,4 @@ def startup(safe):
         default = []
         types = {list}
 
-    safe.options.complete("admin")
+    public.options.complete("admin")
