@@ -24,15 +24,15 @@ You may use **either** of these methods:
 
 *   Download the latest source:
 
-        `duxlot-0.9.19-1542.tar.bz2`_
+        `duxlot-0.9.21-1653.tar.bz2`_
 
-    Unpack it and enter ``duxlot-0.9.19-1542/``
+    Unpack it and enter ``duxlot-0.9.21-1653/``
 
     **Optionally** install using::
 
         python3 setup.py install
 
-.. _duxlot-0.9.19-1542.tar.bz2: http://pypi.python.org/packages/source/d/duxlot/duxlot-0.9.19-1542.tar.bz2
+.. _duxlot-0.9.21-1653.tar.bz2: http://pypi.python.org/packages/source/d/duxlot/duxlot-0.9.21-1653.tar.bz2
 
 *	OR: Install from pypi_ using pip_::
 

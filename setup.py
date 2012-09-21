@@ -48,7 +48,7 @@ You may use **either** of these methods:
 
         pip install duxlot
 
-.. _latest source: http://testpypi.python.org/pypi/duxlot#downloads
+.. _latest source: http://pypi.python.org/pypi/duxlot#downloads
 .. _pip: http://pypi.python.org/pypi/pip
 
 **Optionally** use virtualenv_ for either of these methods.

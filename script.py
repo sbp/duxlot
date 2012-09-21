@@ -470,12 +470,14 @@ def stop(args):
             while time.time() < (start + 20):
                 if not running(pid):
                     print("Successfully stopped PID %s" % pid)
+                    if os.path.isfile(args.pidfile): # should fix dpk's error
+                        os.remove(args.pidfile)
                     return 0
                 time.sleep(0.5)
 
             print("Warning: PID %s did not quit within 20 seconds" % pid)
             os.kill(pid, signal.SIGKILL)
-            if os.path.isfile(args.pidfile): # should fix dpk's error
+            if os.path.isfile(args.pidfile):
                 os.remove(args.pidfile)
             print("Sent a SIGKILL, and removed the PID file manually")
             return 1

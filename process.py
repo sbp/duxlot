@@ -121,6 +121,7 @@ class SocketProcess(Process):
 
     def start(self):
         self.socket = self.create_socket()
+        # This augments the private interface globally
         self.private.socket = self.socket
         Process.start(self)
 

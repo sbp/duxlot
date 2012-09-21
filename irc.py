@@ -98,6 +98,7 @@ class Client(object):
         public = duxlot.Storage()
 
         public.data = self.manager.dict()
+        public.data.stamp = 0
         public.database = duxlot.database(
             duxlot.config.path(self.config.base + ".database"),
             self.manager.Namespace()
@@ -256,8 +257,10 @@ class Client(object):
             sys.exit() # Not os._exit
         signal.signal(signal.SIGUSR1, broken_script_pipe)
 
-    def load(self):
+    def load(self, react=False):
         import importlib
+
+        self.public.options.load(react=react, validate=False)
 
         def info(identifier):
             if os.path.isdir(identifier):
@@ -282,6 +285,7 @@ class Client(object):
                     include.append((directory, name))
 
         self.modules = {}
+        module_info = []
 
         for directory, name in include:
             if name in sys.modules:
@@ -296,6 +300,8 @@ class Client(object):
                     # @@ User error message
                     raise ValueError(name, "is not a standard module")
 
+            # @@ Only make duxlot.path available to standard_directory
+            # Make duxlot.py available to all though?
             sys.path[:0] = [directory, duxlot.path]
             module = importlib.import_module(name)
             self.modules[(directory, name)] = module
@@ -306,6 +312,9 @@ class Client(object):
             else:
                 udir = duxlot.config.reduceuser(directory)
             debug(name, "imported from", udir)
+            module_info.append((udir, name))
+
+        self.public.data.modules = module_info
 
     def reload(self, sender=None, nick=None):
         import imp
@@ -663,13 +672,14 @@ def process_messages(private, public):
     while True:
         # debug("Waiting for message")
         message = messages_get()
+        stamp = time.time()
         # debug("Got message", message)
         if message == "StopIteration":
             break
 
         if message["command"] == "PRIVMSG":
             env = create_irc_env(public, message)
-        
+
             if "command" in env:
                 if env.command in private.named:
                     def process_command(env):

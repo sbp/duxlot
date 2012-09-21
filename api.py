@@ -321,10 +321,10 @@ def timezone_convert(args):
         numbers = args.time.split(":")
         numbers = [int(n.lstrip("0") or "0") for n in numbers]
         if len(numbers) > 3 or len(numbers) < 2:
-            raise Error("Parse error. Expected HH:MM[:SS]")
+            raise Error("Parser expected HH:MM[:SS]")
 
     except Exception as err:
-        raise Error("Parse error: " + str(err))
+        raise Error("Parser reports: " + str(err))
 
     tobj = datetime.datetime(2000, 1, 1, *numbers)
     offset = source.offset - target.offset
@@ -362,7 +362,7 @@ def timezone_info(args):
 @service(clock)
 def tock(args):
     out = duxlot.Storage()
-    page = web.request(    url="http://tycho.usno.navy.mil/cgi-bin/timer.pl")
+    page = web.request(url="http://tycho.usno.navy.mil/cgi-bin/timer.pl")
     out.server = "tycho.usno.navy.mil"
     if "date" in page.headers:
         out.date = page.headers["date"]
@@ -462,7 +462,8 @@ def wolfram_alpha(args):
         r"\'": "'",
         "": "",
         " °": "°",
-        "~~": " ~ "
+        "~~": " ~",
+        "~~ ": " ~"
     }
 
     patterns = {
@@ -481,7 +482,7 @@ def wolfram_alpha(args):
             return pre + "(" + content + ")"
         return r_parens.sub(replacement, text)
 
-    r_superscript = re.compile(r"\^(-?[0-9]+)")
+    r_superscript = re.compile(r"\^\(?(-?[0-9]+)\)?")
 
     def superscript(text):
         super = {"0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
@@ -619,7 +620,7 @@ def calculator(args):
     out.google_right = fields.get("rhs")
 
     if fields.get("error"):
-        raise Error("Google Error. The input may be malformed")
+        raise Error("Google indicates that the input may be malformed")
 
     right = fields.get("rhs", "")
     if right: 
@@ -637,7 +638,7 @@ def calculator(args):
         # this html.decode_entities is needed: source is JSON, not HTML
         out.response = html.decode_entities(html=right)
     else:
-        raise Error("Google Error. Bad 'rhs' field. Input may be malformed")
+        raise Error("Google indicates a bad 'rhs' field. Malformed input?")
 
     return out
 
@@ -1588,6 +1589,13 @@ def pipe(args):
 
     limit = args.maximum.get("bytes", 360)
 
+    def link(**kargs):
+        for result in regex_link.findall(kargs["text"]):
+            return result
+        return "No links found"
+    if not ("link" in services):
+        services["link"] = link
+
     for flag in flags:
         if not flag in services:
             return "Can't use this command: %s" % flag
@@ -1615,6 +1623,20 @@ def _py(args):
     return "Sorry, no result!"
 
 @service(text)
+def rfc(args): # by dpk
+    "Get the title and URL of an RFC"
+    if not args.text:
+        return text.rfc.__doc__
+    
+    if set(args.text) <= set("0123456789"):
+        url = "https://tools.ietf.org/html/rfc" + args.text
+    else:
+        search = "site:tools.ietf.org/html " + args.text
+        url = google.search_api(phrase=search)
+    
+    return web.title(url=url, follow=True) + ": " + url
+
+@service(text)
 def rhymes(args):
     "Show some perfect rhymes of a word"
     if not args.text:
@@ -1630,6 +1652,7 @@ def search_trio(args):
 
     return search.trio(phrase=args.text)
 
+comment = """
 @service(text)
 def sleep_random(args):
     "Sleep for a random number of seconds"
@@ -1637,6 +1660,7 @@ def sleep_random(args):
     s = random.choice([0, 5, 10, 15, 20])
     time.sleep(s)
     return "%s: slept for %s seconds" % (args.text, s)
+"""
 
 @service(text)
 def snack(args):
@@ -1815,7 +1839,7 @@ def tw(args):
     if arg.startswith("@"):
         arg = arg[1:]
 
-    if arg.isdigit():
+    if set(arg) <= set("0123456789"):
         tweet = tweet(id=arg)
     elif regex_twitter_username.match(arg):
         tweet = tweet(username=arg)
@@ -2900,6 +2924,14 @@ def headers_summary(args):
     return out
 
 @service(web)
+def paste(args):
+    page = web.request(
+        url="http://dpaste.de/api/",
+        data={"content": args.text}
+    )
+    return page.text.strip('"') + "raw/"
+
+@service(web)
 def request(args):
     out = duxlot.Storage()
     out.request_headers = web.default_user_agent(
@@ -2922,10 +2954,24 @@ def request(args):
     opener = urllib.request.build_opener(*handlers)
     urllib.request.install_opener(opener)
 
-    req = urllib.request.Request(
-        url=out.request_url,
-        headers=out.request_headers
-    )
+    params = {
+        "url": out.request_url,
+        "headers": out.request_headers
+    }
+
+    if "data" in args:
+        data = args.data
+        if isinstance(data, dict):
+            data = urllib.parse.urlencode(data)
+            params["data"] = data.encode("utf-8", "replace")
+        elif isinstance(data, bytes):
+            params["data"] = data
+        elif isinstance(data, str):
+            params["data"] = data.encode("utf-8", "replace")
+        else:
+            raise Error("Unknown data type: %s" % type(data))
+
+    req = urllib.request.Request(**params)
     with urllib.request.urlopen(req) as response:
         out.status = response.status # int
         out.url = response.url
@@ -3041,11 +3087,12 @@ def article(args):
             language=language
         )
 
-    upper = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-    lower = list("abcdefghijklmnopqrstuvwxyz")
-    abbreviations = ("etc", "ca", "cf", "Co", "Ltd", "Inc", "Mt", "Mr", "Mrs",
-        "Dr", "Ms", "Rev", "Fr", "St", "Sgt", "pron", "approx", "lit", "syn",
-        "transl", "sess", "fl", "Op", "Dec", "Brig", "Gen", "Bros")
+    upper = tuple("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    lower = tuple("abcdefghijklmnopqrstuvwxyz")
+    abbreviations = upper + lower + ("etc", "ca", "cf", "Co", "Ltd", "Inc",
+        "Mt", "Mr", "Mrs", "Dr", "Ms", "Rev", "Fr", "St", "Sgt", "pron",
+        "approx", "lit", "syn", "transl", "sess", "fl", "Op", "Dec", "Brig",
+        "Gen", "Bros")
     abbreviations_pattern = r"(?<!\b%s)" % r")(?<!\b".join(abbreviations)
     regex_sentence= re.compile(
         r"^(.{5,}?%s(?:\.(?=[\[ ][A-Z0-9]|\Z)|\Z|\n))" % abbreviations_pattern
@@ -3418,3 +3465,6 @@ def wiktionary_format(args):
             result += ", ".join(n)
 
     return result.strip(" .,")
+
+if __name__ == "__main__":
+    ...

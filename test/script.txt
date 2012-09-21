@@ -178,7 +178,8 @@ The following configuration base is not usable:
     /tmp/dux/
 
 This usually happens when your configuration file is called just ".json"
-instead of having a name before the extension, such as "config.json". The configuration file duxlot tried to use is:
+instead of having a name before the extension, such as "config.json". The
+configuration file duxlot tried to use is:
 
     /tmp/dux/.json
 
@@ -298,14 +299,18 @@ You may now edit this default configuration, then run the bot:
 
 $ duxlot -f start
 Running as PID <pid>
-Imported admin, core, glue, standard from $PWD/standard
+admin imported from standard
+core imported from standard
+services imported from standard
+start imported from standard
+text imported from standard
 Connecting to irc.freenode.net:6667
-START! process_send
 START! process_receive
+START! process_events
+START! process_send
+RECV: b':irc.freenode.net NOTICE * :*** Looking up your hostname...\r\n'
 START! process_messages
 START! process_schedule
-START! process_events
-RECV: b':irc.freenode.net NOTICE * :*** Looking up your hostname...\r\n'
 
 $ rm -rf /tmp/dux
 

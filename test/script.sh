@@ -198,7 +198,7 @@ duxlot --version | \
 
 duxlot create
 
-duxlot -f start | head -n 10 | \
+duxlot -f start | head -n 14 | \
     sed -E "s!$PWD!\$PWD!; s/:[a-z]+/:irc/; s/PID [0-9]+/PID <pid>/"
 echo
 

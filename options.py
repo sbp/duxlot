@@ -22,8 +22,7 @@ class Option(object):
 
         self.public = public
         self.data = manager.Namespace()
-        self.data.prefix = ""
-        self.data.value = None
+        self.data.value = None # @@ _value? __value?
 
         self.put(self.default, react=False)
 
@@ -49,10 +48,10 @@ class Option(object):
             self.data.value = value
             if data:
                 for a, b in data.items():
-                    if a in {"prefix", "value"}:
+                    if a == "value":
                         continue # ?
                     setattr(self.data, a, b)
-            if react:
+            if react is True:
                 self.react()
 
             return True
@@ -89,6 +88,7 @@ class Options(object):
         else:
             return getattr(self.__options[name].data, attr)
 
+    # This is a decorator
     def group(self, name=None):
         if name in self.completed:
             raise ValueError("the %r group is complete" % name)
@@ -98,11 +98,12 @@ class Options(object):
             self.__options[option.name] = option
         return decorate
 
+    # This is used after the decorators
     def complete(self, name=None):
         # @@ Check that this group name has been used?
         self.completed.add(name)
 
-    def load(self, react=True):
+    def load(self, react=True, validate=True):
         # When loading initially, react=False!
         # Note that this method will also validate input
         import collections
@@ -113,6 +114,9 @@ class Options(object):
 
         self.map.pings.clear()
         for key, value in mappings.items():
+            if validate is False:
+                if not (key in self.__options):
+                    continue
             # No need to dump, because we've literally just read it
             # The react param will be False for initial load, True for reloads
             if isinstance(value, collections.OrderedDict):
@@ -126,24 +130,36 @@ class Options(object):
         mappings[key] = value
         self.map.pings = mappings
 
-        if dump:
-            self.dump()
+        if dump is True:
+            return self.dump()
 
     def dump(self):
-        try:
-            strings = ["{\n"]
+        def export(self):
+            import shutil
+
+            # Create strings first, in case JSONising fails half way through
+            strings = ["{"]
             for key, value in self.map.pings.items():
                 pair = json.dumps(key) + ": " + json.dumps(value) + ","
-                strings.append("    " + pair + "\n")
-            strings[-1] = strings[-1].rstrip(",\n") + "\n"
-            strings.append("}\n")
+                strings.append("    " + pair)
+            strings[-1] = strings[-1].rstrip(",")
+            strings.append("}")
 
-            args = (self.filename, "w")
+            # Write to .export first, in case writing fails half way through
+            args = (self.filename + ".export", "w")
             with duxlot.filesystem.open(*args, encoding="utf-8") as f:
                 for string in strings:
-                    f.write(string)
+                    f.write(string + "\n")
+
+            # @@ Might have to be non-re-entrant, because load uses
+            # the same lock. Do we need that to block?
+            with duxlot.filesystem.lock:
+                shutil.copy2(self.filename, self.filename + ".backup")
+                shutil.move(self.filename + ".export", self.filename)
+
+        try: export(self)
         except Exception as err:
-            print(err)
+            duxlot.output.write(err)
             return False
         else:
             return True

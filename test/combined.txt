@@ -148,6 +148,9 @@ WAIT 3
 : Completed the reload. Took <[0-9.]{3,5}> seconds
 WAIT 3
 
+.rfc HTTP
+<.*>RFC 2616<.*> http://tools.ietf.org/html/rfc2616
+
 .search-trio reddit
 [GBD] http://www.reddit.com/
 

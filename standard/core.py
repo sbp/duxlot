@@ -46,7 +46,6 @@ def ask(env):
 @command
 def attributes(env):
     "Discover which attributes are available to internal functions"
-    # @@ this is broken, input doesn't work
     env.say("env: " + ", ".join(env().keys()))
 
 @command
@@ -76,6 +75,7 @@ def _in(env):
     env.reply("Will remind %s" % phrase)
 
 # env, kind of
+# @@ Could be an api.text command
 @command
 def maximum(env):
     "Discover the maximum number of byte content that can be sent per message"
@@ -112,6 +112,7 @@ def parsed_message(env):
     "Show parsed input message"
     env.reply(repr(env.message))
 
+# make admin?
 @command
 def reload(env):
     "Reload all commands and services"
