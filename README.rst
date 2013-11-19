@@ -4,7 +4,7 @@ Duxlot, the IRC Bot
 Duxlot_ is a new IRC bot created by `Sean B. Palmer`_, the maker of the popular
 Phenny_. Features include a fast multiprocess architecture, modularity, and
 ease of use. Duxlot has no dependencies except Python 3, and will even work
-without having to be installed as as package.
+without having to be installed as a package.
 
 .. _Duxlot: http://inamidst.com/duxlot/
 .. _Sean B. Palmer: http://inamidst.com/sbp/
